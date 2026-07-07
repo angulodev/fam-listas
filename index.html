@@ -137,15 +137,12 @@ a{color:var(--pri)}
 .done-head .arrow{margin-left:auto; transition:transform .15s}
 .done-head.open .arrow{transform:rotate(90deg)}
 
-/* Barra de agregar */
-.addbar{position:fixed; bottom:0; left:0; right:0; background:linear-gradient(transparent, var(--bg) 30%);
-  padding:18px 16px calc(14px + env(safe-area-inset-bottom))}
-.addbar .inner{max-width:520px; margin:0 auto; display:flex; gap:6px; background:var(--card);
-  border-radius:999px; padding:6px 6px 6px 16px; box-shadow:0 4px 18px rgba(0,0,0,.16); align-items:center}
-.addbar input{flex:1; border:none; outline:none; background:none; min-width:0}
-.addbar .more{width:38px; height:38px; border-radius:50%; display:grid; place-items:center; font-size:1.05rem; color:var(--muted); flex-shrink:0}
-.addbar .send{width:42px; height:42px; border-radius:50%; background:var(--pri); color:#fff; font-size:1.2rem;
-  display:grid; place-items:center; flex-shrink:0}
+/* Botón flotante de agregar */
+.fab{position:fixed; right:max(20px, calc(50% - 240px)); bottom:calc(22px + env(safe-area-inset-bottom));
+  width:58px; height:58px; border-radius:50%; background:var(--pri); color:#fff; font-size:1.7rem;
+  display:grid; place-items:center; box-shadow:0 6px 20px rgba(0,0,0,.28); z-index:40;
+  transition:transform .12s ease}
+.fab:active{transform:scale(.92)}
 
 /* ---------- Ticket compacto ---------- */
 .ticket{position:relative; background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow);
@@ -670,11 +667,7 @@ async function listView(id){
     <div id="requests"></div>
     <div id="items"></div>
     ${canEdit ? `
-    <div class="addbar"><div class="inner">
-      <input id="fItem" placeholder="Agregar… ej: Pan · 2 kg" maxlength="120" autocomplete="off">
-      <button class="more" id="btnMore" title="Agregar con detalle">📷</button>
-      <button class="send" id="btnAdd">＋</button>
-    </div></div>` : ''}
+    <button class="fab" id="btnAdd" title="Agregar ítem">＋</button>` : ''}
   `;
 
   document.getElementById('btnBack').onclick = () => { location.hash = ''; };
@@ -817,21 +810,8 @@ async function listView(id){
   await loadItems();
 
   if (canEdit){
-    const inp = document.getElementById('fItem');
-    const openForm = () => itemFormSheet({ listId: id, members: approvedMembers, prefill: inp.value.trim() });
-    const quickAdd = async () => {
-      const raw = inp.value.trim();
-      if (!raw) return openForm();   /* ＋ sin texto abre el formulario completo */
-      const m = raw.split(/\s[·\-–]\s/);
-      inp.value = ''; inp.focus();
-      const { error } = await sb.from('fam_item').insert({
-        list_id: id, content: m[0].trim(), quantity: m[1]?.trim() || null, created_by: session.user.id,
-      });
-      if (error) toast('Error: ' + error.message);
-    };
-    document.getElementById('btnAdd').onclick = quickAdd;
-    inp.addEventListener('keydown', e => { if (e.key === 'Enter') quickAdd(); });
-    document.getElementById('btnMore').onclick = openForm;
+    document.getElementById('btnAdd').onclick = () =>
+      itemFormSheet({ listId: id, members: approvedMembers });
   }
 
   channel = sb.channel('list-'+id)
