@@ -778,7 +778,7 @@ async function listView(id){
 
     $items.querySelectorAll('[data-open]').forEach(el => el.onclick = () => {
       const i = itemById[el.closest('.item').dataset.id];
-      if (i) itemDetailSheet(i, userById);
+      if (i) itemDetailSheet(i, userById, canEdit ? { listId: id, members: approvedMembers } : null);
     });
     $items.querySelectorAll('[data-check]').forEach(b => b.onclick = async () => {
       if (!canEdit) return toast('Solo lectura en esta lista');
@@ -818,8 +818,10 @@ async function listView(id){
 
   if (canEdit){
     const inp = document.getElementById('fItem');
+    const openForm = () => itemFormSheet({ listId: id, members: approvedMembers, prefill: inp.value.trim() });
     const quickAdd = async () => {
-      const raw = inp.value.trim(); if (!raw) return;
+      const raw = inp.value.trim();
+      if (!raw) return openForm();   /* ＋ sin texto abre el formulario completo */
       const m = raw.split(/\s[·\-–]\s/);
       inp.value = ''; inp.focus();
       const { error } = await sb.from('fam_item').insert({
@@ -829,7 +831,7 @@ async function listView(id){
     };
     document.getElementById('btnAdd').onclick = quickAdd;
     inp.addEventListener('keydown', e => { if (e.key === 'Enter') quickAdd(); });
-    document.getElementById('btnMore').onclick = () => detailAddSheet(id, inp.value.trim(), approvedMembers);
+    document.getElementById('btnMore').onclick = openForm;
   }
 
   channel = sb.channel('list-'+id)
@@ -862,35 +864,37 @@ function shareSheet(list, t){
   };
 }
 
-/* --- agregar con detalle (precio, link, foto, responsable) --- */
-function detailAddSheet(listId, prefill = '', members = []){
+/* --- formulario de ítem: crear o editar (precio, link, foto, responsable) --- */
+function itemFormSheet({ listId, members = [], item = null, prefill = '' }){
   let photoFile = null;
-  let assigned = null;
+  let assigned = item?.assigned_to || null;
+  const isEdit = !!item;
   const ov = sheet(`
-    <h3>Agregar con detalle</h3>
-    <div class="field"><label>¿Qué?</label><input id="dContent" value="${esc(prefill)}" placeholder="Ej: Arena para gatos" maxlength="120" autocomplete="off"></div>
+    <h3>${isEdit ? 'Editar ítem' : 'Agregar con detalle'}</h3>
+    <div class="field"><label>¿Qué?</label><input id="dContent" value="${esc(item?.content || prefill)}" placeholder="Ej: Arena para gatos" maxlength="120" autocomplete="off"></div>
     <div class="field-row">
-      <div class="field"><label>Cantidad</label><input id="dQty" placeholder="2 kg" maxlength="30" autocomplete="off"></div>
-      <div class="field"><label>Precio (CLP)</label><input id="dPrice" type="number" inputmode="numeric" min="0" placeholder="4990"></div>
+      <div class="field"><label>Cantidad</label><input id="dQty" value="${esc(item?.quantity || '')}" placeholder="2 kg" maxlength="30" autocomplete="off"></div>
+      <div class="field"><label>Precio (CLP)</label><input id="dPrice" type="number" inputmode="numeric" min="0" value="${item?.price ? Number(item.price) : ''}" placeholder="4990"></div>
     </div>
     ${members.length > 1 ? `
     <div class="field"><label>¿A quién le toca?</label>
       <div class="type-grid" style="grid-template-columns:repeat(auto-fill,minmax(74px,1fr))">
-        <button class="type-opt sel" data-a=""><span class="e">🤷</span>Nadie</button>
-        ${members.map(m => `<button class="type-opt" data-a="${m.user_id}">
+        <button class="type-opt ${!assigned ? 'sel' : ''}" data-a=""><span class="e">🤷</span>Nadie</button>
+        ${members.map(m => `<button class="type-opt ${assigned === m.user_id ? 'sel' : ''}" data-a="${m.user_id}">
           <span class="e">${m.sys_user?.avatar_url ? `<img src="${esc(m.sys_user.avatar_url)}" style="width:22px;height:22px;border-radius:50%;object-fit:cover">` : '👤'}</span>${esc(firstName(m.sys_user))}
         </button>`).join('')}
       </div>
     </div>` : ''}
-    <div class="field"><label>Link del producto</label><input id="dLink" type="url" placeholder="https://…" autocomplete="off"></div>
+    <div class="field"><label>Link del producto</label><input id="dLink" type="url" value="${esc(item?.link || '')}" placeholder="https://…" autocomplete="off"></div>
     <div class="field"><label>Foto</label>
-      <label class="photo-drop" id="dDrop">
-        <img id="dPreview" style="display:none" alt="">
-        <span class="txt" id="dDropTxt">📷 Tomar foto o elegir de la galería</span>
-        <input id="dPhoto" type="file" accept="image/*" capture="environment" style="display:none">
-      </label>
+      <div class="photo-drop">
+        <img id="dPreview" src="${esc(item?.photo_url || '')}" style="${item?.photo_url ? '' : 'display:none'}" alt="">
+        <span class="txt" id="dDropTxt">${item?.photo_url ? 'Foto actual (puedes cambiarla)' : 'Sin foto todavía'}</span>
+        <button class="btn-mini" id="dPhotoBtn" type="button">📷 ${item?.photo_url ? 'Cambiar' : 'Agregar'}</button>
+      </div>
+      <input id="dPhoto" type="file" accept="image/*" style="display:none">
     </div>
-    <button class="btn-primary" id="dSave">Agregar a la lista</button>
+    <button class="btn-primary" id="dSave">${isEdit ? 'Guardar cambios' : 'Agregar a la lista'}</button>
     <button class="btn-ghost" data-close>Cancelar</button>`);
 
   ov.querySelectorAll('[data-a]').forEach(b => b.onclick = () => {
@@ -899,47 +903,50 @@ function detailAddSheet(listId, prefill = '', members = []){
   });
 
   const photoInput = ov.querySelector('#dPhoto');
+  ov.querySelector('#dPhotoBtn').onclick = () => photoInput.click();
   photoInput.onchange = () => {
     photoFile = photoInput.files[0] || null;
     if (photoFile){
       const img = ov.querySelector('#dPreview');
       img.src = URL.createObjectURL(photoFile); img.style.display = '';
-      ov.querySelector('#dDropTxt').textContent = 'Foto lista ✓ (toca para cambiar)';
+      ov.querySelector('#dDropTxt').textContent = 'Foto lista ✓';
     }
   };
-  ov.querySelector('#dContent').focus();
+  if (!isEdit) ov.querySelector('#dContent').focus();
   ov.querySelector('#dSave').onclick = async (e) => {
     const content = ov.querySelector('#dContent').value.trim();
     if (!content) return ov.querySelector('#dContent').focus();
     e.target.disabled = true; e.target.textContent = 'Guardando…';
-    let photo_url = null;
     try{
+      let photo_url = item?.photo_url || null;
       if (photoFile){
         e.target.textContent = 'Subiendo foto…';
         photo_url = await uploadPhoto(listId, photoFile);
       }
       const price = parseFloat(ov.querySelector('#dPrice').value);
-      const { error } = await sb.from('fam_item').insert({
-        list_id: listId,
+      const payload = {
         content,
         quantity: ov.querySelector('#dQty').value.trim() || null,
         price: isNaN(price) ? null : price,
         link: ov.querySelector('#dLink').value.trim() || null,
         photo_url,
         assigned_to: assigned,
-        created_by: session.user.id,
-      });
+      };
+      const { error } = isEdit
+        ? await sb.from('fam_item').update(payload).eq('id', item.id)
+        : await sb.from('fam_item').insert({ ...payload, list_id: listId, created_by: session.user.id });
       if (error) throw error;
-      ov.remove(); toast('Agregado ✓');
+      ov.remove(); toast(isEdit ? 'Ítem actualizado ✓' : 'Agregado ✓');
     }catch(err){
-      e.target.disabled = false; e.target.textContent = 'Agregar a la lista';
+      e.target.disabled = false;
+      e.target.textContent = isEdit ? 'Guardar cambios' : 'Agregar a la lista';
       toast('Error: ' + err.message);
     }
   };
 }
 
 /* --- detalle de ítem --- */
-function itemDetailSheet(i, userById){
+function itemDetailSheet(i, userById, ctx = null){
   const rows = [];
   if (i.quantity) rows.push(['Cantidad', esc(i.quantity)]);
   if (i.price) rows.push(['Precio', clp(i.price)]);
@@ -947,12 +954,19 @@ function itemDetailSheet(i, userById){
   if (i.is_done && i.done_by && userById[i.done_by])
     rows.push(['Marcado por', `${esc(firstName(userById[i.done_by]))} · ${fmtWhen(i.done_at)}`]);
   rows.push(['Agregado', fmtWhen(i.created_at)]);
-  sheet(`
+  const ov = sheet(`
     ${i.photo_url ? `<img class="detail-photo" src="${esc(i.photo_url)}" alt="">` : ''}
     <h3>${esc(i.content)}</h3>
     <div class="detail-rows">${rows.map(([k,v]) => `<div class="dr"><b>${k}</b><span>${v}</span></div>`).join('')}</div>
     ${i.link ? `<a class="btn-primary" style="display:block; text-align:center; text-decoration:none" href="${esc(i.link)}" target="_blank" rel="noopener">Abrir link del producto 🔗</a>` : ''}
+    ${ctx ? `<button class="btn-ghost" id="dtEdit" style="color:var(--pri-dark)">✏️ Editar ítem</button>` : ''}
     <button class="btn-ghost" data-close>Cerrar</button>`);
+  if (ctx){
+    ov.querySelector('#dtEdit').onclick = () => {
+      ov.remove();
+      itemFormSheet({ listId: ctx.listId, members: ctx.members, item: i });
+    };
+  }
 }
 
 /* ---------------- Utilidades UI ---------------- */
