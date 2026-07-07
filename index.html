@@ -659,7 +659,7 @@ async function listView(id){
       <button class="back-btn" id="btnBack">←</button>
       <div class="brand" style="font-size:1.1rem">${list.icon ? esc(list.icon) : t.e} ${esc(list.name)}</div>
       <button class="back-btn" id="btnInvite" title="Invitar">🎟️</button>
-      ${myRole==='owner' ? `<button class="back-btn" id="btnSettings" title="Configurar lista">⚙️</button>` : ''}
+      <button class="back-btn" id="btnSettings" title="Opciones">⚙️</button>
     </div>
     <div class="chip-row">
       <span class="chip">${esc(list.custom_type) || t.label}</span>
@@ -669,9 +669,6 @@ async function listView(id){
     <div class="members members-line" id="membersRow"></div>
     <div id="requests"></div>
     <div id="items"></div>
-    ${myRole==='owner'
-      ? `<button class="btn-danger-ghost" id="btnDelete">Eliminar lista</button>`
-      : `<button class="btn-danger-ghost" id="btnLeave">Salir de la lista</button>`}
     ${canEdit ? `
     <div class="addbar"><div class="inner">
       <input id="fItem" placeholder="Agregar… ej: Pan · 2 kg" maxlength="120" autocomplete="off">
@@ -727,29 +724,7 @@ async function listView(id){
     });
   }
 
-  document.getElementById('btnSettings')?.addEventListener('click', () => settingsSheet(list));
-  document.getElementById('btnDelete')?.addEventListener('click', async () => {
-    const ok = await confirmSheet({
-      title: 'Eliminar lista', danger: true,
-      message: `Se eliminará "${list.name}" con todos sus ítems, para todos los miembros. Esto no se puede deshacer.`,
-      confirmLabel: 'Sí, eliminar',
-    });
-    if (!ok) return;
-    const { error } = await sb.from('fam_list').delete().eq('id', id);
-    if (error) return toast('Error: ' + error.message);
-    location.hash = '';
-  });
-  document.getElementById('btnLeave')?.addEventListener('click', async () => {
-    const ok = await confirmSheet({
-      title: 'Salir de la lista', danger: true,
-      message: `Dejarás de ver "${list.name}". Puedes volver a unirte con el código.`,
-      confirmLabel: 'Sí, salir',
-    });
-    if (!ok) return;
-    const { error } = await sb.from('fam_list_member').delete().eq('list_id', id).eq('user_id', session.user.id);
-    if (error) return toast('Error: ' + error.message);
-    location.hash = '';
-  });
+  document.getElementById('btnSettings').addEventListener('click', () => settingsSheet(list, myRole));
 
   /* --- ítems --- */
   const $items = document.getElementById('items');
@@ -997,7 +972,30 @@ function confirmSheet({ title, message, confirmLabel = 'Confirmar', danger = fal
   });
 }
 
-function settingsSheet(list){
+function settingsSheet(list, myRole = 'owner'){
+  /* Miembro no-owner: solo puede salir de la lista */
+  if (myRole !== 'owner'){
+    const ov = sheet(`
+      <h3>Opciones</h3>
+      <p class="msg">Eres ${myRole === 'editor' ? 'editor' : 'lector'} de "${esc(list.name)}". Solo quien la creó puede modificarla.</p>
+      <button class="btn-danger-ghost" id="oLeave">Salir de la lista</button>
+      <button class="btn-ghost" data-close>Cerrar</button>`);
+    ov.querySelector('#oLeave').onclick = async () => {
+      ov.remove();
+      const ok = await confirmSheet({
+        title: 'Salir de la lista', danger: true,
+        message: `Dejarás de ver "${list.name}". Puedes volver a unirte con el código.`,
+        confirmLabel: 'Sí, salir',
+      });
+      if (!ok) return;
+      const { error } = await sb.from('fam_list_member').delete()
+        .eq('list_id', list.id).eq('user_id', session.user.id);
+      if (error) return toast('Error: ' + error.message);
+      location.hash = '';
+    };
+    return;
+  }
+
   let type = list.list_type;
   const ov = sheet(`
     <h3>Configurar lista</h3>
@@ -1015,6 +1013,7 @@ function settingsSheet(list){
     </div>
     <button class="btn-primary" id="sSave">Guardar cambios</button>
     <button class="btn-danger-ghost" id="sArchive">Archivar lista</button>
+    <button class="btn-danger-ghost" id="sDelete">Eliminar lista</button>
     <button class="btn-ghost" data-close>Cancelar</button>`);
   ov.querySelectorAll('.type-opt').forEach(b => b.onclick = () => {
     type = b.dataset.t;
@@ -1034,6 +1033,18 @@ function settingsSheet(list){
     }).eq('id', list.id);
     if (error){ e.target.disabled = false; return toast('Error: ' + error.message); }
     ov.remove(); toast('Lista actualizada ✓');
+  };
+  ov.querySelector('#sDelete').onclick = async () => {
+    ov.remove();
+    const ok = await confirmSheet({
+      title: 'Eliminar lista', danger: true,
+      message: `Se eliminará "${list.name}" con todos sus ítems, para todos los miembros. Esto no se puede deshacer. Si solo quieres guardarla, usa Archivar.`,
+      confirmLabel: 'Sí, eliminar',
+    });
+    if (!ok) return;
+    const { error } = await sb.from('fam_list').delete().eq('id', list.id);
+    if (error) return toast('Error: ' + error.message);
+    location.hash = '';
   };
   ov.querySelector('#sArchive').onclick = async () => {
     ov.remove();
