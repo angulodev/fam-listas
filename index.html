@@ -868,14 +868,7 @@ async function listView(id){
 
     document.getElementById('toggleDone')?.addEventListener('click', () => { showDone = !showDone; loadItems(); });
 
-    $items.querySelectorAll('[data-open]').forEach(el => el.onclick = () => {
-      const i = itemById[el.closest('.item').dataset.id];
-      if (i) itemDetailSheet(i, userById, canEdit ? { listId: id, members: approvedMembers } : null);
-    });
-    $items.querySelectorAll('[data-check]').forEach(b => b.onclick = async () => {
-      if (!canEdit) return toast('Solo lectura en esta lista');
-      const el = b.closest('.item');
-      const i = itemById[el.dataset.id];
+    const toggleItem = async (i) => {
       const done = !i.is_done;
       if (done){
         const ok = await confirmSheet({
@@ -892,6 +885,18 @@ async function listView(id){
       }).eq('id', i.id);
       if (error) return toast('Error: '+error.message);
       loadItems();
+    };
+
+    $items.querySelectorAll('[data-open]').forEach(el => el.onclick = () => {
+      const i = itemById[el.closest('.item').dataset.id];
+      if (i) itemDetailSheet(i, userById, canEdit
+        ? { listId: id, members: approvedMembers, doneWord, onToggle: toggleItem }
+        : null);
+    });
+    $items.querySelectorAll('[data-check]').forEach(b => b.onclick = () => {
+      if (!canEdit) return toast('Solo lectura en esta lista');
+      const i = itemById[b.closest('.item').dataset.id];
+      toggleItem(i);
     });
     $items.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
       const i = itemById[b.closest('.item').dataset.id];
@@ -1037,10 +1042,17 @@ function itemDetailSheet(i, userById, ctx = null){
     ${i.photo_url ? `<img class="detail-photo" src="${esc(i.photo_url)}" alt="">` : ''}
     <h3>${esc(i.content)}</h3>
     <div class="detail-rows">${rows.map(([k,v]) => `<div class="dr"><b>${k}</b><span>${v}</span></div>`).join('')}</div>
-    ${i.link ? `<a class="btn-primary" style="display:block; text-align:center; text-decoration:none" href="${esc(i.link)}" target="_blank" rel="noopener">Abrir link del producto 🔗</a>` : ''}
+    ${ctx ? (i.is_done
+      ? `<button class="btn-ghost" id="dtToggle">↩️ Desmarcar</button>`
+      : `<button class="btn-primary" id="dtToggle">✓ Marcar como ${esc(ctx.doneWord)}</button>`) : ''}
+    ${i.link ? `<a class="${ctx && !i.is_done ? 'btn-ghost' : 'btn-primary'}" style="display:block; text-align:center; text-decoration:none" href="${esc(i.link)}" target="_blank" rel="noopener">Abrir link del producto 🔗</a>` : ''}
     ${ctx ? `<button class="btn-ghost" id="dtEdit" style="color:var(--pri-dark)">✏️ Editar ítem</button>` : ''}
     <button class="btn-ghost" data-close>Cerrar</button>`);
   if (ctx){
+    ov.querySelector('#dtToggle').onclick = () => {
+      ov.remove();
+      ctx.onToggle(i);
+    };
     ov.querySelector('#dtEdit').onclick = () => {
       ov.remove();
       itemFormSheet({ listId: ctx.listId, members: ctx.members, item: i });
