@@ -342,7 +342,7 @@ async function homeView(){
   const me = session.user;
   const [{ data: lists, error }, { data: items }, { data: myRow }, { data: myMems }] = await Promise.all([
     sb.from('fam_list').select('*').eq('is_archived', false).order('created_at'),
-    sb.from('fam_item').select('list_id, is_done, done_at, price'),
+    sb.from('fam_item').select('list_id, content, is_done, done_at, price, assigned_to'),
     sb.from('sys_user').select('first_name, avatar_url').eq('id', me.id).single(),
     sb.from('fam_list_member').select('list_id, status').eq('user_id', me.id),
   ]);
@@ -389,7 +389,7 @@ async function homeView(){
     <div class="greet">${greet}, ${esc(myName)} 👋</div>
 
     <div class="stats">
-      <div class="stat"><div class="n acc">${pendTotal}</div><div class="l">Pendientes</div></div>
+      <button class="stat" id="statPend"><div class="n acc">${pendTotal}</div><div class="l">Pendientes ›</div></button>
       <div class="stat"><div class="n">${done7}</div><div class="l">Listos · 7d</div></div>
       <div class="stat"><div class="n">${spendMonth ? clp(spendMonth) : '—'}</div><div class="l">Gasto del mes</div></div>
     </div>
@@ -429,7 +429,7 @@ async function homeView(){
           <div class="info">
             <div class="name">${esc(l.name)}</div>
             <div class="progress"><i style="width:${pct}%"></i></div>
-            <div class="meta">${t.label} · ${s.done}/${s.total} listos</div>
+            <div class="meta">${esc(l.custom_type) || t.label} · ${s.done}/${s.total} listos</div>
           </div>
           <div class="count ${p ? '' : 'zero'}">${p ? p : '✓'}</div>
         </button>`;
@@ -444,6 +444,30 @@ async function homeView(){
   document.getElementById('btnNew').onclick = newListSheet;
   document.getElementById('btnJoin').onclick = joinSheet;
   document.getElementById('btnProfile').onclick = () => profileSheet(myRow, avatar);
+  document.getElementById('statPend').onclick = () => {
+    const listById = Object.fromEntries((lists||[]).map(l => [l.id, l]));
+    const pend = all.filter(i => !i.is_done && listById[i.list_id]);
+    if (!pend.length) return toast('Nada pendiente 🎉');
+    const byList = {};
+    pend.forEach(i => (byList[i.list_id] = byList[i.list_id] || []).push(i));
+    const ov = sheet(`
+      <h3>Pendientes (${pend.length})</h3>
+      ${Object.entries(byList).map(([lid, its]) => {
+        const l = listById[lid];
+        const t2 = TYPES[l.list_type] || TYPES.otra;
+        return `
+          <div class="section-label" style="margin-top:8px">${l.icon ? esc(l.icon) : t2.e} ${esc(l.name)}</div>
+          ${its.map(i => `
+            <button class="item" data-goto="${lid}" style="width:100%; text-align:left">
+              <div class="body"><div class="content">${esc(i.content)}</div></div>
+              <span style="color:var(--muted)">›</span>
+            </button>`).join('')}`;
+      }).join('')}
+      <button class="btn-ghost" data-close>Cerrar</button>`);
+    ov.querySelectorAll('[data-goto]').forEach(b => b.onclick = () => {
+      ov.remove(); location.hash = `#/list/${b.dataset.goto}`;
+    });
+  };
 
   channel = sb.channel('home')
     .on('postgres_changes', { event:'*', schema:'public', table:'fam_list' }, () => { if(!location.hash.startsWith('#/list/')) homeView(); })
@@ -505,19 +529,32 @@ function newListSheet(){
         `<button class="type-opt ${k===type?'sel':''}" data-t="${k}"><span class="e">${t.e}</span>${t.label}</button>`).join('')}
       </div>
     </div>
+    <div id="fOtraWrap" style="display:none">
+      <div class="field-row">
+        <div class="field"><label>¿De qué es?</label><input id="fCustom" placeholder="Ej: Regalos, Mascotas" maxlength="30" autocomplete="off"></div>
+        <div class="field"><label>Emoji</label><input id="fEmoji" placeholder="🎁" maxlength="4" autocomplete="off" style="text-align:center; font-size:1.2rem"></div>
+      </div>
+    </div>
     <button class="btn-primary" id="fCreate">Crear lista</button>
     <button class="btn-ghost" data-close>Cancelar</button>`);
   ov.querySelectorAll('.type-opt').forEach(b => b.onclick = () => {
     type = b.dataset.t;
     ov.querySelectorAll('.type-opt').forEach(x => x.classList.toggle('sel', x===b));
+    ov.querySelector('#fOtraWrap').style.display = type === 'otra' ? '' : 'none';
   });
   const inp = ov.querySelector('#fName'); inp.focus();
   ov.querySelector('#fCreate').onclick = async (e) => {
     const name = inp.value.trim();
     if (!name) return inp.focus();
+    if (type === 'otra' && !ov.querySelector('#fCustom').value.trim())
+      return ov.querySelector('#fCustom').focus();
     e.target.disabled = true;
     const { data, error } = await sb.from('fam_list')
-      .insert({ name, list_type: type, created_by: session.user.id })
+      .insert({
+        name, list_type: type, created_by: session.user.id,
+        custom_type: type === 'otra' ? ov.querySelector('#fCustom').value.trim() : null,
+        icon: type === 'otra' ? (ov.querySelector('#fEmoji').value.trim() || null) : null,
+      })
       .select().single();
     if (error){ e.target.disabled = false; return toast('Error: ' + error.message); }
     ov.remove();
@@ -619,11 +656,12 @@ async function listView(id){
   $app.innerHTML = `
     <div class="topbar">
       <button class="back-btn" id="btnBack">←</button>
-      <div class="brand" style="font-size:1.1rem">${t.e} ${esc(list.name)}</div>
+      <div class="brand" style="font-size:1.1rem">${list.icon ? esc(list.icon) : t.e} ${esc(list.name)}</div>
+      <button class="back-btn" id="btnInvite" title="Invitar">🎟️</button>
       ${myRole==='owner' ? `<button class="back-btn" id="btnSettings" title="Configurar lista">⚙️</button>` : ''}
     </div>
     <div class="chip-row">
-      <span class="chip">${t.label}</span>
+      <span class="chip">${esc(list.custom_type) || t.label}</span>
       <span class="chip orange" id="chipPending"></span>
       <span class="chip" id="chipSpend" style="display:none"></span>
     </div>
@@ -631,7 +669,6 @@ async function listView(id){
     <div id="items"></div>
     <div class="share-card">
       <div class="members" id="membersRow"></div>
-      <button class="btn-mini" id="btnInvite">🎟️ Invitar</button>
     </div>
     ${myRole==='owner'
       ? `<button class="btn-danger-ghost" id="btnDelete">Eliminar lista</button>`
@@ -744,7 +781,9 @@ async function listView(id){
         <div class="body" data-open>
           <div class="content">${esc(i.content)}${i.quantity?` <span class="qty">· ${esc(i.quantity)}</span>`:''}${i.price?`<span class="price-tag">${clp(i.price)}</span>`:''}</div>
           ${i.is_done && i.done_by && userById[i.done_by]
-            ? `<div class="who">✓ ${esc(firstName(userById[i.done_by]))} · ${fmtWhen(i.done_at)}</div>` : ''}
+            ? `<div class="who">✓ ${esc(firstName(userById[i.done_by]))} · ${fmtWhen(i.done_at)}</div>`
+            : (!i.is_done && i.assigned_to && userById[i.assigned_to]
+              ? `<div class="who">🙋 Le toca a ${esc(firstName(userById[i.assigned_to]))}</div>` : '')}
         </div>
         ${i.link ? `<a class="linkico" href="${esc(i.link)}" target="_blank" rel="noopener" title="Abrir link">🔗</a>` : ''}
         ${canEdit?`<button class="del" data-del aria-label="Eliminar">✕</button>`:''}
@@ -816,7 +855,7 @@ async function listView(id){
     };
     document.getElementById('btnAdd').onclick = quickAdd;
     inp.addEventListener('keydown', e => { if (e.key === 'Enter') quickAdd(); });
-    document.getElementById('btnMore').onclick = () => detailAddSheet(id, inp.value.trim());
+    document.getElementById('btnMore').onclick = () => detailAddSheet(id, inp.value.trim(), approvedMembers);
   }
 
   channel = sb.channel('list-'+id)
@@ -849,9 +888,10 @@ function shareSheet(list, t){
   };
 }
 
-/* --- agregar con detalle (precio, link, foto) --- */
-function detailAddSheet(listId, prefill = ''){
+/* --- agregar con detalle (precio, link, foto, responsable) --- */
+function detailAddSheet(listId, prefill = '', members = []){
   let photoFile = null;
+  let assigned = null;
   const ov = sheet(`
     <h3>Agregar con detalle</h3>
     <div class="field"><label>¿Qué?</label><input id="dContent" value="${esc(prefill)}" placeholder="Ej: Arena para gatos" maxlength="120" autocomplete="off"></div>
@@ -859,6 +899,15 @@ function detailAddSheet(listId, prefill = ''){
       <div class="field"><label>Cantidad</label><input id="dQty" placeholder="2 kg" maxlength="30" autocomplete="off"></div>
       <div class="field"><label>Precio (CLP)</label><input id="dPrice" type="number" inputmode="numeric" min="0" placeholder="4990"></div>
     </div>
+    ${members.length > 1 ? `
+    <div class="field"><label>¿A quién le toca?</label>
+      <div class="type-grid" style="grid-template-columns:repeat(auto-fill,minmax(74px,1fr))">
+        <button class="type-opt sel" data-a=""><span class="e">🤷</span>Nadie</button>
+        ${members.map(m => `<button class="type-opt" data-a="${m.user_id}">
+          <span class="e">${m.sys_user?.avatar_url ? `<img src="${esc(m.sys_user.avatar_url)}" style="width:22px;height:22px;border-radius:50%;object-fit:cover">` : '👤'}</span>${esc(firstName(m.sys_user))}
+        </button>`).join('')}
+      </div>
+    </div>` : ''}
     <div class="field"><label>Link del producto</label><input id="dLink" type="url" placeholder="https://…" autocomplete="off"></div>
     <div class="field"><label>Foto</label>
       <label class="photo-drop" id="dDrop">
@@ -869,6 +918,11 @@ function detailAddSheet(listId, prefill = ''){
     </div>
     <button class="btn-primary" id="dSave">Agregar a la lista</button>
     <button class="btn-ghost" data-close>Cancelar</button>`);
+
+  ov.querySelectorAll('[data-a]').forEach(b => b.onclick = () => {
+    assigned = b.dataset.a || null;
+    ov.querySelectorAll('[data-a]').forEach(x => x.classList.toggle('sel', x===b));
+  });
 
   const photoInput = ov.querySelector('#dPhoto');
   photoInput.onchange = () => {
@@ -898,6 +952,7 @@ function detailAddSheet(listId, prefill = ''){
         price: isNaN(price) ? null : price,
         link: ov.querySelector('#dLink').value.trim() || null,
         photo_url,
+        assigned_to: assigned,
         created_by: session.user.id,
       });
       if (error) throw error;
@@ -914,6 +969,7 @@ function itemDetailSheet(i, userById){
   const rows = [];
   if (i.quantity) rows.push(['Cantidad', esc(i.quantity)]);
   if (i.price) rows.push(['Precio', clp(i.price)]);
+  if (i.assigned_to && userById[i.assigned_to]) rows.push(['Le toca a', esc(firstName(userById[i.assigned_to]))]);
   if (i.is_done && i.done_by && userById[i.done_by])
     rows.push(['Marcado por', `${esc(firstName(userById[i.done_by]))} · ${fmtWhen(i.done_at)}`]);
   rows.push(['Agregado', fmtWhen(i.created_at)]);
@@ -952,18 +1008,31 @@ function settingsSheet(list){
         `<button class="type-opt ${k===type?'sel':''}" data-t="${k}"><span class="e">${t.e}</span>${t.label}</button>`).join('')}
       </div>
     </div>
+    <div id="sOtraWrap" style="display:${type==='otra'?'':'none'}">
+      <div class="field-row">
+        <div class="field"><label>¿De qué es?</label><input id="sCustom" value="${esc(list.custom_type||'')}" placeholder="Ej: Regalos" maxlength="30" autocomplete="off"></div>
+        <div class="field"><label>Emoji</label><input id="sEmoji" value="${esc(list.icon||'')}" placeholder="🎁" maxlength="4" autocomplete="off" style="text-align:center; font-size:1.2rem"></div>
+      </div>
+    </div>
     <button class="btn-primary" id="sSave">Guardar cambios</button>
     <button class="btn-danger-ghost" id="sArchive">Archivar lista</button>
     <button class="btn-ghost" data-close>Cancelar</button>`);
   ov.querySelectorAll('.type-opt').forEach(b => b.onclick = () => {
     type = b.dataset.t;
     ov.querySelectorAll('.type-opt').forEach(x => x.classList.toggle('sel', x===b));
+    ov.querySelector('#sOtraWrap').style.display = type === 'otra' ? '' : 'none';
   });
   ov.querySelector('#sSave').onclick = async (e) => {
     const name = ov.querySelector('#sName').value.trim();
     if (!name) return;
+    if (type === 'otra' && !ov.querySelector('#sCustom').value.trim())
+      return ov.querySelector('#sCustom').focus();
     e.target.disabled = true;
-    const { error } = await sb.from('fam_list').update({ name, list_type: type }).eq('id', list.id);
+    const { error } = await sb.from('fam_list').update({
+      name, list_type: type,
+      custom_type: type === 'otra' ? ov.querySelector('#sCustom').value.trim() : null,
+      icon: type === 'otra' ? (ov.querySelector('#sEmoji').value.trim() || null) : null,
+    }).eq('id', list.id);
     if (error){ e.target.disabled = false; return toast('Error: ' + error.message); }
     ov.remove(); toast('Lista actualizada ✓');
   };
