@@ -163,6 +163,17 @@ a{color:var(--pri)}
 .members{display:flex; align-items:center; margin-top:10px}
 .members .avatar{margin-right:-8px; width:28px; height:28px; font-size:.7rem}
 .members .mnames{margin-left:16px; font-size:.8rem; color:var(--muted)}
+.share-card{display:flex; align-items:center; gap:10px; background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow); padding:11px 14px; margin:16px 0 6px}
+.share-card .members{margin-top:0; flex:1; min-width:0}
+.req{display:flex; align-items:center; gap:10px; background:var(--acc-soft); border-radius:14px; padding:10px 12px; margin-bottom:8px}
+.req .avatar{width:32px; height:32px; font-size:.75rem}
+.req .nm{flex:1; font-weight:800; min-width:0; overflow:hidden; text-overflow:ellipsis}
+.req .nm small{display:block; font-weight:700; color:var(--muted); font-size:.72rem}
+.req .ok{background:var(--pri); color:#fff; border-radius:10px; padding:7px 13px; font-weight:800; font-size:.85rem}
+.req .no{color:var(--danger); font-weight:800; padding:7px 9px; font-size:1rem}
+.list-card.waiting{opacity:.7}
+.code-big{font-family:ui-monospace,'SF Mono',Menlo,monospace; font-size:2rem; font-weight:700; letter-spacing:.3em;
+  color:var(--pri-dark); text-align:center; margin:4px 0 14px; background:var(--bg); border:2px dashed var(--line); border-radius:16px; padding:14px}
 
 /* ---------- Sheets / modales ---------- */
 .overlay{position:fixed; inset:0; background:rgba(10,18,14,.5); display:grid; place-items:end center; z-index:50; animation:fade .15s ease}
@@ -329,12 +340,14 @@ function route(){
 async function homeView(){
   $app.innerHTML = `<div class="loader">Cargando…</div>`;
   const me = session.user;
-  const [{ data: lists, error }, { data: items }, { data: myRow }] = await Promise.all([
+  const [{ data: lists, error }, { data: items }, { data: myRow }, { data: myMems }] = await Promise.all([
     sb.from('fam_list').select('*').eq('is_archived', false).order('created_at'),
     sb.from('fam_item').select('list_id, is_done, done_at, price'),
     sb.from('sys_user').select('first_name, avatar_url').eq('id', me.id).single(),
+    sb.from('fam_list_member').select('list_id, status').eq('user_id', me.id),
   ]);
   if (error){ $app.innerHTML = `<div class="empty">Error cargando listas: ${esc(error.message)}</div>`; return; }
+  const statusByList = Object.fromEntries((myMems||[]).map(m => [m.list_id, m.status]));
 
   /* --- estadísticas --- */
   const all = items || [];
@@ -399,6 +412,15 @@ async function homeView(){
     <div id="lists">
       ${(lists && lists.length) ? lists.map(l => {
         const t = TYPES[l.list_type] || TYPES.otra;
+        if (statusByList[l.id] === 'pending'){
+          return `<button class="list-card waiting" data-id="${l.id}">
+            <div class="emoji">⏳</div>
+            <div class="info">
+              <div class="name">${esc(l.name)}</div>
+              <div class="meta">Esperando aprobación del dueño</div>
+            </div>
+          </button>`;
+        }
         const s = perList[l.id] || { total:0, done:0 };
         const p = s.total - s.done;
         const pct = s.total ? Math.round(s.done / s.total * 100) : 0;
@@ -426,6 +448,7 @@ async function homeView(){
   channel = sb.channel('home')
     .on('postgres_changes', { event:'*', schema:'public', table:'fam_list' }, () => { if(!location.hash.startsWith('#/list/')) homeView(); })
     .on('postgres_changes', { event:'*', schema:'public', table:'fam_item' }, () => { if(!location.hash.startsWith('#/list/')) homeView(); })
+    .on('postgres_changes', { event:'*', schema:'public', table:'fam_list_member' }, () => { if(!location.hash.startsWith('#/list/')) homeView(); })
     .subscribe();
 }
 
@@ -517,9 +540,16 @@ function joinSheet(){
     e.target.disabled = true;
     const { data, error } = await sb.rpc('fn_fam_join_by_code', { p_code: code });
     if (error){ e.target.disabled = false; return toast(error.message.includes('inválido') ? 'Código inválido 😕' : 'Error: '+error.message); }
+    const { data: mem } = await sb.from('fam_list_member').select('status')
+      .eq('list_id', data).eq('user_id', session.user.id).single();
     ov.remove();
-    toast('¡Te uniste a la lista! 🎉');
-    location.hash = `#/list/${data}`;
+    if (mem?.status === 'pending'){
+      toast('Solicitud enviada · espera aprobación 🙌');
+      homeView();
+    } else {
+      toast('¡Ya eres parte de la lista! 🎉');
+      location.hash = `#/list/${data}`;
+    }
   };
 }
 
@@ -559,8 +589,31 @@ async function listView(id){
     return;
   }
   const t = TYPES[list.list_type] || TYPES.otra;
-  const myRole = members?.find(m => m.user_id === session.user.id)?.member_role || 'viewer';
+  const myMember = members?.find(m => m.user_id === session.user.id);
+
+  /* Solicitante en espera: pantalla de espera con actualización en vivo */
+  if (myMember?.status === 'pending'){
+    $app.innerHTML = `
+      <div class="topbar">
+        <button class="back-btn" id="btnBack">←</button>
+        <div class="brand" style="font-size:1.1rem">${t.e} ${esc(list.name)}</div>
+      </div>
+      <div class="empty" style="margin-top:20px">
+        <div class="big">⏳</div>
+        Tu solicitud fue enviada.<br>
+        Quien creó la lista debe aprobarte — apenas lo haga, entrarás automáticamente.
+      </div>`;
+    document.getElementById('btnBack').onclick = () => { location.hash = ''; };
+    channel = sb.channel('wait-'+id)
+      .on('postgres_changes', { event:'*', schema:'public', table:'fam_list_member', filter:`list_id=eq.${id}` }, () => listView(id))
+      .subscribe();
+    return;
+  }
+
+  const myRole = myMember?.status === 'approved' ? myMember.member_role : 'viewer';
   const canEdit = myRole === 'owner' || myRole === 'editor';
+  const approvedMembers = (members||[]).filter(m => m.status === 'approved');
+  const pendingReqs = (members||[]).filter(m => m.status === 'pending');
   const userById = {}; (members||[]).forEach(m => userById[m.user_id] = m.sys_user);
 
   $app.innerHTML = `
@@ -574,18 +627,11 @@ async function listView(id){
       <span class="chip orange" id="chipPending"></span>
       <span class="chip" id="chipSpend" style="display:none"></span>
     </div>
+    <div id="requests"></div>
     <div id="items"></div>
-    <div class="ticket">
-      <div class="row">
-        <div>
-          <div class="label">Código</div>
-          <div class="code">${esc(list.share_code)}</div>
-        </div>
-        <div class="spacer"></div>
-        <button class="btn-mini wa" id="btnWa">📲 WhatsApp</button>
-        <button class="btn-mini" id="btnCopy">Copiar</button>
-      </div>
+    <div class="share-card">
       <div class="members" id="membersRow"></div>
+      <button class="btn-mini" id="btnInvite">🎟️ Invitar</button>
     </div>
     ${myRole==='owner'
       ? `<button class="btn-danger-ghost" id="btnDelete">Eliminar lista</button>`
@@ -599,20 +645,51 @@ async function listView(id){
   `;
 
   document.getElementById('btnBack').onclick = () => { location.hash = ''; };
-  document.getElementById('btnCopy').onclick = async () => {
-    try{ await navigator.clipboard.writeText(list.share_code); toast('Código copiado 📋'); }
-    catch{ toast(list.share_code); }
-  };
-  document.getElementById('btnWa').onclick = () => {
-    const msg = `${t.e} ¡Únete a nuestra lista "${list.name}"!\n\n1. Entra a ${APP_URL}\n2. Inicia sesión con Google\n3. Toca "Unirme" y usa el código: *${list.share_code}*`;
-    window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
-  };
+  document.getElementById('btnInvite').onclick = () => shareSheet(list, t);
 
   const $members = document.getElementById('membersRow');
-  $members.innerHTML = (members||[]).map(m => {
+  $members.innerHTML = approvedMembers.map(m => {
     const u = m.sys_user;
     return `<div class="avatar" title="${esc(firstName(u))}">${u?.avatar_url ? `<img src="${esc(u.avatar_url)}" alt="">` : esc(initial(u))}</div>`;
-  }).join('') + `<div class="mnames">${(members||[]).map(m => esc(firstName(m.sys_user))).join(', ')}</div>`;
+  }).join('') + `<div class="mnames">${approvedMembers.map(m => esc(firstName(m.sys_user))).join(', ')}</div>`;
+
+  /* Solicitudes de ingreso (solo owner) */
+  if (myRole === 'owner' && pendingReqs.length){
+    const $req = document.getElementById('requests');
+    $req.innerHTML = `<div class="section-label" style="margin-top:2px">Quieren unirse</div>` +
+      pendingReqs.map(m => {
+        const u = m.sys_user;
+        return `<div class="req" data-uid="${m.user_id}">
+          <div class="avatar">${u?.avatar_url ? `<img src="${esc(u.avatar_url)}" alt="">` : esc(initial(u))}</div>
+          <div class="nm">${esc(firstName(u))}<small>${esc(u?.email || '')}</small></div>
+          <button class="ok" data-approve>Aceptar</button>
+          <button class="no" data-reject aria-label="Rechazar">✕</button>
+        </div>`;
+      }).join('');
+    $req.querySelectorAll('[data-approve]').forEach(b => b.onclick = async () => {
+      const uid = b.closest('.req').dataset.uid;
+      b.disabled = true;
+      const { error } = await sb.from('fam_list_member').update({ status: 'approved' })
+        .eq('list_id', id).eq('user_id', uid);
+      if (error){ b.disabled = false; return toast('Error: ' + error.message); }
+      toast('Miembro aprobado ✓');
+      listView(id);
+    });
+    $req.querySelectorAll('[data-reject]').forEach(b => b.onclick = async () => {
+      const row = b.closest('.req');
+      const nm = row.querySelector('.nm').firstChild.textContent;
+      const ok = await confirmSheet({
+        title: 'Rechazar solicitud', danger: true,
+        message: `${nm} no podrá entrar a la lista (puede volver a solicitar con el código).`,
+        confirmLabel: 'Sí, rechazar',
+      });
+      if (!ok) return;
+      const { error } = await sb.from('fam_list_member').delete()
+        .eq('list_id', id).eq('user_id', row.dataset.uid);
+      if (error) return toast('Error: ' + error.message);
+      listView(id);
+    });
+  }
 
   document.getElementById('btnSettings')?.addEventListener('click', () => settingsSheet(list));
   document.getElementById('btnDelete')?.addEventListener('click', async () => {
@@ -744,10 +821,32 @@ async function listView(id){
 
   channel = sb.channel('list-'+id)
     .on('postgres_changes', { event:'*', schema:'public', table:'fam_item', filter:`list_id=eq.${id}` }, loadItems)
+    .on('postgres_changes', { event:'*', schema:'public', table:'fam_list_member', filter:`list_id=eq.${id}` }, () => {
+      if (location.hash.includes(id)) listView(id);
+    })
     .on('postgres_changes', { event:'*', schema:'public', table:'fam_list', filter:`id=eq.${id}` }, () => {
       if (location.hash.includes(id)) listView(id);
     })
     .subscribe();
+}
+
+/* --- invitar (código + WhatsApp) --- */
+function shareSheet(list, t){
+  const ov = sheet(`
+    <h3>Invitar a la lista</h3>
+    <p class="msg">Comparte este código. Quien lo use enviará una solicitud y tú decides si entra.</p>
+    <div class="code-big">${esc(list.share_code)}</div>
+    <button class="btn-primary" id="shWa">📲 Enviar por WhatsApp</button>
+    <button class="btn-ghost" id="shCopy">Copiar código</button>
+    <button class="btn-ghost" data-close>Cerrar</button>`);
+  ov.querySelector('#shWa').onclick = () => {
+    const msg = `${t.e} ¡Únete a nuestra lista "${list.name}"!\n\n1. Entra a ${APP_URL}\n2. Inicia sesión con Google\n3. Toca "Unirme" y usa el código: *${list.share_code}*\n\nYo apruebo tu ingreso apenas llegue la solicitud 👍`;
+    window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
+  };
+  ov.querySelector('#shCopy').onclick = async () => {
+    try{ await navigator.clipboard.writeText(list.share_code); toast('Código copiado 📋'); }
+    catch{ toast(list.share_code); }
+  };
 }
 
 /* --- agregar con detalle (precio, link, foto) --- */
