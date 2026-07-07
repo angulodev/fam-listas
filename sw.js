@@ -1,6 +1,6 @@
 // Service worker — fam-listas v1
 // Shell cache-first; Supabase y fuentes siempre por red (con fallback a cache para fuentes).
-const CACHE = 'fam-listas-v5';
+const CACHE = 'fam-listas-v6';
 const SHELL = ['./', 'index.html', 'manifest.json', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {

@@ -163,8 +163,9 @@ a{color:var(--pri)}
 .members{display:flex; align-items:center; margin-top:10px}
 .members .avatar{margin-right:-8px; width:28px; height:28px; font-size:.7rem}
 .members .mnames{margin-left:16px; font-size:.8rem; color:var(--muted)}
-.share-card{display:flex; align-items:center; gap:10px; background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow); padding:11px 14px; margin:16px 0 6px}
-.share-card .members{margin-top:0; flex:1; min-width:0}
+.members-line{margin:-4px 2px 14px}
+.members-line .avatar{width:24px; height:24px; font-size:.62rem}
+.members-line .mnames{margin-left:14px; font-size:.78rem}
 .req{display:flex; align-items:center; gap:10px; background:var(--acc-soft); border-radius:14px; padding:10px 12px; margin-bottom:8px}
 .req .avatar{width:32px; height:32px; font-size:.75rem}
 .req .nm{flex:1; font-weight:800; min-width:0; overflow:hidden; text-overflow:ellipsis}
@@ -618,7 +619,7 @@ async function listView(id){
   $app.innerHTML = `<div class="loader">Abriendo lista…</div>`;
   const [{ data: list, error }, { data: members }] = await Promise.all([
     sb.from('fam_list').select('*').eq('id', id).single(),
-    sb.from('fam_list_member').select('member_role, user_id, sys_user(first_name, last_name, display_name, email, avatar_url)').eq('list_id', id),
+    sb.from('fam_list_member').select('member_role, status, user_id, sys_user(first_name, last_name, display_name, email, avatar_url)').eq('list_id', id),
   ]);
   if (error || !list){
     $app.innerHTML = `<div class="empty">No se pudo abrir la lista.<br><small>${esc(error?.message||'')}</small></div>
@@ -665,11 +666,9 @@ async function listView(id){
       <span class="chip orange" id="chipPending"></span>
       <span class="chip" id="chipSpend" style="display:none"></span>
     </div>
+    <div class="members members-line" id="membersRow"></div>
     <div id="requests"></div>
     <div id="items"></div>
-    <div class="share-card">
-      <div class="members" id="membersRow"></div>
-    </div>
     ${myRole==='owner'
       ? `<button class="btn-danger-ghost" id="btnDelete">Eliminar lista</button>`
       : `<button class="btn-danger-ghost" id="btnLeave">Salir de la lista</button>`}
