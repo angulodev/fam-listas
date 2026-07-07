@@ -192,6 +192,15 @@ input{font-family:inherit; font-size:inherit; color:inherit}
 .btn-primary:disabled{opacity:.5}
 .btn-ghost{width:100%; padding:12px; color:var(--muted); font-weight:700}
 .btn-danger-ghost{width:100%; padding:12px; color:var(--danger); font-weight:800}
+.btn-primary.danger{background:var(--danger)}
+.sheet p.msg{color:var(--muted); margin:0 0 16px}
+.done-head{
+  display:flex; align-items:center; gap:8px; width:100%; padding:10px 6px; margin:6px 0 4px;
+  font-size:.8rem; font-weight:800; text-transform:uppercase; letter-spacing:.07em; color:var(--muted);
+}
+.done-head .arrow{margin-left:auto; transition:transform .15s}
+.done-head.open .arrow{transform:rotate(90deg)}
+.item.done{opacity:.75}
 
 /* ---------- Toast ---------- */
 .toast{
@@ -419,6 +428,7 @@ async function listView(id){
     <div class="topbar">
       <button class="back-btn" id="btnBack">←</button>
       <div class="brand" style="font-size:1.1rem">${t.e} ${esc(list.name)}</div>
+      ${myRole==='owner' ? `<button class="back-btn" id="btnSettings" title="Configurar lista">⚙️</button>` : ''}
     </div>
     <div class="chip-row">
       <span class="chip">${t.label}</span>
@@ -459,14 +469,25 @@ async function listView(id){
     return `<div class="avatar" title="${esc(firstName(u))}">${u?.avatar_url ? `<img src="${esc(u.avatar_url)}" alt="">` : esc(initial(u))}</div>`;
   }).join('') + `<div class="mnames">${(members||[]).map(m => esc(firstName(m.sys_user))).join(', ')}</div>`;
 
+  document.getElementById('btnSettings')?.addEventListener('click', () => settingsSheet(list));
   document.getElementById('btnDelete')?.addEventListener('click', async () => {
-    if (!confirm(`¿Eliminar "${list.name}" y todos sus ítems? Esto no se puede deshacer.`)) return;
+    const ok = await confirmSheet({
+      title: 'Eliminar lista', danger: true,
+      message: `Se eliminará "${list.name}" con todos sus ítems, para todos los miembros. Esto no se puede deshacer.`,
+      confirmLabel: 'Sí, eliminar',
+    });
+    if (!ok) return;
     const { error } = await sb.from('fam_list').delete().eq('id', id);
     if (error) return toast('Error: ' + error.message);
     location.hash = '';
   });
   document.getElementById('btnLeave')?.addEventListener('click', async () => {
-    if (!confirm('¿Salir de esta lista?')) return;
+    const ok = await confirmSheet({
+      title: 'Salir de la lista', danger: true,
+      message: `Dejarás de ver "${list.name}". Puedes volver a unirte con el código.`,
+      confirmLabel: 'Sí, salir',
+    });
+    if (!ok) return;
     const { error } = await sb.from('fam_list_member').delete().eq('list_id', id).eq('user_id', session.user.id);
     if (error) return toast('Error: ' + error.message);
     location.hash = '';
@@ -474,15 +495,22 @@ async function listView(id){
 
   /* --- ítems --- */
   const $items = document.getElementById('items');
+  let showDone = false;
+  const doneWord = list.list_type === 'compras' ? 'comprado' : 'completado';
+
   async function loadItems(){
     const { data: items, error } = await sb.from('fam_item').select('*')
       .eq('list_id', id)
-      .order('is_done', { ascending: true })
       .order('created_at', { ascending: false });
     if (error) return;
-    const pend = items.filter(i => !i.is_done).length;
-    document.getElementById('chipPending').textContent = pend ? `${pend} pendiente${pend>1?'s':''}` : 'Todo listo ✓';
-    $items.innerHTML = items.length ? items.map(i => `
+
+    const pendItems = items.filter(i => !i.is_done);
+    const doneItems = items.filter(i => i.is_done)
+      .sort((a,b) => (b.done_at||'').localeCompare(a.done_at||''));
+    document.getElementById('chipPending').textContent =
+      pendItems.length ? `${pendItems.length} pendiente${pendItems.length>1?'s':''}` : 'Todo listo ✓';
+
+    const renderItem = i => `
       <div class="item ${i.is_done?'done':''}" data-id="${i.id}">
         <button class="checkbox" data-check aria-label="${i.is_done?'Desmarcar':'Marcar'}">${i.is_done?'✓':''}</button>
         <div class="body">
@@ -490,25 +518,54 @@ async function listView(id){
           ${i.is_done && i.done_by && userById[i.done_by] ? `<div class="who">✓ ${esc(firstName(userById[i.done_by]))}</div>` : ''}
         </div>
         ${canEdit?`<button class="del" data-del aria-label="Eliminar">✕</button>`:''}
-      </div>`).join('')
-      : `<div class="empty"><div class="big">${t.e}</div>Lista vacía. ${canEdit?'Agrega el primer ítem abajo.':''}</div>`;
+      </div>`;
+
+    $items.innerHTML = !items.length
+      ? `<div class="empty"><div class="big">${t.e}</div>Lista vacía. ${canEdit?'Agrega el primer ítem abajo.':''}</div>`
+      : `
+        ${pendItems.map(renderItem).join('') ||
+          `<div class="empty"><div class="big">🎉</div>Nada pendiente. ¡Todo ${doneWord}!</div>`}
+        ${doneItems.length ? `
+          <button class="done-head ${showDone?'open':''}" id="toggleDone">
+            ✓ ${doneWord.charAt(0).toUpperCase()+doneWord.slice(1)}s (${doneItems.length}) <span class="arrow">▸</span>
+          </button>
+          ${showDone ? doneItems.map(renderItem).join('') : ''}` : ''}`;
+
+    document.getElementById('toggleDone')?.addEventListener('click', () => { showDone = !showDone; loadItems(); });
 
     $items.querySelectorAll('[data-check]').forEach(b => b.onclick = async () => {
       if (!canEdit) return toast('Solo lectura en esta lista');
-      const el = b.closest('.item'); const done = !el.classList.contains('done');
-      el.classList.toggle('done', done); // optimista
+      const el = b.closest('.item');
+      const done = !el.classList.contains('done');
+      const name = el.querySelector('.content')?.textContent.trim();
+      if (done){
+        const ok = await confirmSheet({
+          title: `¿${doneWord.charAt(0).toUpperCase()+doneWord.slice(1)}?`,
+          message: `Marcar "${name}" como ${doneWord}.`,
+          confirmLabel: `Sí, ${doneWord} ✓`,
+        });
+        if (!ok) return;
+      }
       const { error } = await sb.from('fam_item').update({
         is_done: done,
         done_by: done ? session.user.id : null,
         done_at: done ? new Date().toISOString() : null,
       }).eq('id', el.dataset.id);
-      if (error){ el.classList.toggle('done', !done); toast('Error: '+error.message); }
+      if (error) return toast('Error: '+error.message);
+      loadItems();
     });
     $items.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
       const el = b.closest('.item');
-      el.style.opacity = .4;
+      const name = el.querySelector('.content')?.textContent.trim();
+      const ok = await confirmSheet({
+        title: 'Eliminar ítem', danger: true,
+        message: `Se eliminará "${name}" de la lista para todos.`,
+        confirmLabel: 'Sí, eliminar',
+      });
+      if (!ok) return;
       const { error } = await sb.from('fam_item').delete().eq('id', el.dataset.id);
-      if (error){ el.style.opacity = 1; toast('Error: '+error.message); }
+      if (error) return toast('Error: '+error.message);
+      loadItems();
     });
   }
   await loadItems();
@@ -538,6 +595,61 @@ async function listView(id){
 }
 
 /* ---------------- Utilidades UI ---------------- */
+function confirmSheet({ title, message, confirmLabel = 'Confirmar', danger = false }){
+  return new Promise(resolve => {
+    let settled = false;
+    const ov = sheet(`
+      <h3 ${danger ? 'style="color:var(--danger)"' : ''}>${esc(title)}</h3>
+      <p class="msg">${esc(message)}</p>
+      <button class="btn-primary ${danger ? 'danger' : ''}" id="cOk">${esc(confirmLabel)}</button>
+      <button class="btn-ghost" data-close>Cancelar</button>`);
+    ov.querySelector('#cOk').onclick = () => { settled = true; ov.remove(); resolve(true); };
+    const obs = new MutationObserver(() => {
+      if (!document.body.contains(ov)){ obs.disconnect(); if (!settled) resolve(false); }
+    });
+    obs.observe(document.body, { childList: true });
+  });
+}
+
+function settingsSheet(list){
+  let type = list.list_type;
+  const ov = sheet(`
+    <h3>Configurar lista</h3>
+    <div class="field"><label>Nombre</label><input id="sName" value="${esc(list.name)}" maxlength="60" autocomplete="off"></div>
+    <div class="field"><label>Tipo</label>
+      <div class="type-grid">${Object.entries(TYPES).map(([k,t]) =>
+        `<button class="type-opt ${k===type?'sel':''}" data-t="${k}"><span class="e">${t.e}</span>${t.label}</button>`).join('')}
+      </div>
+    </div>
+    <button class="btn-primary" id="sSave">Guardar cambios</button>
+    <button class="btn-danger-ghost" id="sArchive">Archivar lista</button>
+    <button class="btn-ghost" data-close>Cancelar</button>`);
+  ov.querySelectorAll('.type-opt').forEach(b => b.onclick = () => {
+    type = b.dataset.t;
+    ov.querySelectorAll('.type-opt').forEach(x => x.classList.toggle('sel', x===b));
+  });
+  ov.querySelector('#sSave').onclick = async (e) => {
+    const name = ov.querySelector('#sName').value.trim();
+    if (!name) return;
+    e.target.disabled = true;
+    const { error } = await sb.from('fam_list').update({ name, list_type: type }).eq('id', list.id);
+    if (error){ e.target.disabled = false; return toast('Error: ' + error.message); }
+    ov.remove(); toast('Lista actualizada ✓');
+  };
+  ov.querySelector('#sArchive').onclick = async () => {
+    ov.remove();
+    const ok = await confirmSheet({
+      title: 'Archivar lista', danger: true,
+      message: `"${list.name}" dejará de aparecer para todos los miembros, pero no se elimina.`,
+      confirmLabel: 'Sí, archivar',
+    });
+    if (!ok) return;
+    const { error } = await sb.from('fam_list').update({ is_archived: true }).eq('id', list.id);
+    if (error) return toast('Error: ' + error.message);
+    location.hash = '';
+  };
+}
+
 function sheet(html){
   const ov = document.createElement('div');
   ov.className = 'overlay';
