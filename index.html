@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Listas · Familia</title>
+<meta name="description" content="Listas compartidas de compras, tareas y pendientes — sincronizadas en vivo.">
+<meta name="theme-color" content="#157B57">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F3F6F2; --card:#FFFFFF; --ink:#21322A; --muted:#70807A;
+  --green:#157B57; --green-dark:#0B573C; --green-soft:#E3F0E9;
+  --naranja:#F0973B; --naranja-soft:#FCEEDC;
+  --line:#E1E9E2; --done:#9AAaa1; --danger:#C0492F;
+  --radius:18px; --shadow:0 2px 10px rgba(33,50,42,.07);
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+html,body{margin:0; padding:0}
+body{
+  background:var(--bg); color:var(--ink);
+  font-family:'Nunito',system-ui,sans-serif; font-size:16px; line-height:1.45;
+  min-height:100dvh;
+  padding-bottom:env(safe-area-inset-bottom);
+}
+h1,h2,h3,.display{font-family:'Fredoka',system-ui,sans-serif; font-weight:600; letter-spacing:.01em}
+button{font-family:inherit; cursor:pointer; border:none; background:none; color:inherit; font-size:inherit}
+input{font-family:inherit; font-size:inherit; color:inherit}
+.app{max-width:520px; margin:0 auto; padding:0 16px 96px}
+
+/* ---------- Header ---------- */
+.topbar{
+  display:flex; align-items:center; gap:10px;
+  padding:calc(14px + env(safe-area-inset-top)) 0 12px;
+}
+.topbar .brand{font-family:'Fredoka'; font-weight:600; font-size:1.35rem; color:var(--green-dark); flex:1}
+.topbar .brand span{color:var(--naranja)}
+.avatar{width:36px; height:36px; border-radius:50%; background:var(--green-soft); color:var(--green-dark);
+  display:grid; place-items:center; font-weight:800; font-size:.85rem; overflow:hidden; border:2px solid #fff; box-shadow:var(--shadow)}
+.avatar img{width:100%; height:100%; object-fit:cover}
+.back-btn{width:36px; height:36px; border-radius:12px; background:var(--card); box-shadow:var(--shadow);
+  display:grid; place-items:center; font-size:1.1rem; color:var(--green-dark)}
+
+/* ---------- Login ---------- */
+.login{min-height:80dvh; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; gap:14px; padding:24px}
+.login .mark{font-size:3.2rem; line-height:1}
+.login h1{font-size:1.9rem; margin:0; color:var(--green-dark)}
+.login p{color:var(--muted); margin:0 0 10px; max-width:280px}
+.btn-google{
+  display:flex; align-items:center; gap:12px; background:var(--card); box-shadow:var(--shadow);
+  border:1px solid var(--line); border-radius:999px; padding:13px 22px; font-weight:800;
+}
+.btn-google svg{width:20px; height:20px}
+
+/* ---------- Cards de listas ---------- */
+.section-label{font-size:.78rem; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:18px 4px 8px}
+.list-card{
+  display:flex; align-items:center; gap:14px; background:var(--card); border-radius:var(--radius);
+  padding:15px 16px; margin-bottom:10px; box-shadow:var(--shadow); width:100%; text-align:left;
+  transition:transform .12s ease;
+}
+.list-card:active{transform:scale(.98)}
+.list-card .emoji{
+  width:44px; height:44px; border-radius:14px; display:grid; place-items:center; font-size:1.35rem; flex-shrink:0;
+}
+.list-card .info{flex:1; min-width:0}
+.list-card .name{font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.list-card .meta{font-size:.82rem; color:var(--muted)}
+.list-card .count{
+  min-width:30px; height:30px; padding:0 9px; border-radius:999px; background:var(--naranja-soft); color:#9A5A10;
+  display:grid; place-items:center; font-weight:800; font-size:.9rem;
+}
+.list-card .count.zero{background:var(--green-soft); color:var(--green-dark)}
+.empty{
+  text-align:center; color:var(--muted); padding:38px 20px; background:var(--card); border-radius:var(--radius);
+  border:1.5px dashed var(--line);
+}
+.empty .big{font-size:2rem}
+
+/* ---------- Acciones home ---------- */
+.home-actions{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:16px}
+.action-tile{
+  background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow); padding:14px;
+  display:flex; flex-direction:column; align-items:flex-start; gap:4px; font-weight:800; text-align:left;
+}
+.action-tile .ico{font-size:1.3rem}
+.action-tile small{color:var(--muted); font-weight:600}
+
+/* ---------- Vista de lista ---------- */
+.list-head{display:flex; align-items:center; gap:12px; margin:6px 0 4px}
+.list-head h2{margin:0; font-size:1.45rem; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.chip-row{display:flex; gap:6px; flex-wrap:wrap; margin:6px 0 14px}
+.chip{font-size:.78rem; font-weight:800; padding:4px 11px; border-radius:999px; background:var(--green-soft); color:var(--green-dark)}
+.chip.orange{background:var(--naranja-soft); color:#9A5A10}
+
+.item{
+  display:flex; align-items:center; gap:12px; background:var(--card); border-radius:14px;
+  padding:12px 14px; margin-bottom:8px; box-shadow:var(--shadow);
+  animation:pop .18s ease;
+}
+@keyframes pop{from{opacity:0; transform:translateY(4px)} to{opacity:1; transform:none}}
+.checkbox{
+  width:26px; height:26px; border-radius:9px; border:2.5px solid var(--green); flex-shrink:0;
+  display:grid; place-items:center; color:#fff; font-size:.95rem; transition:background .15s ease;
+}
+.item.done .checkbox{background:var(--green); border-color:var(--green)}
+.item .body{flex:1; min-width:0}
+.item .content{font-weight:700; transition:color .2s}
+.item .qty{color:var(--muted); font-weight:600}
+.item.done .content{color:var(--done); text-decoration:line-through; text-decoration-thickness:2px}
+.item .who{font-size:.75rem; color:var(--muted)}
+.item .del{color:var(--line); font-size:1.15rem; padding:4px 6px}
+.item .del:active{color:var(--danger)}
+
+/* Barra de agregar (bottom) */
+.addbar{
+  position:fixed; bottom:0; left:0; right:0; background:linear-gradient(transparent, var(--bg) 30%);
+  padding:18px 16px calc(14px + env(safe-area-inset-bottom));
+}
+.addbar .inner{
+  max-width:520px; margin:0 auto; display:flex; gap:8px; background:var(--card);
+  border-radius:999px; padding:6px 6px 6px 18px; box-shadow:0 4px 18px rgba(33,50,42,.16);
+}
+.addbar input{flex:1; border:none; outline:none; background:none; min-width:0}
+.addbar .send{
+  width:42px; height:42px; border-radius:50%; background:var(--green); color:#fff; font-size:1.2rem;
+  display:grid; place-items:center; flex-shrink:0;
+}
+
+/* ---------- Ticket del código (signature) ---------- */
+.ticket{
+  position:relative; background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow);
+  margin:18px 0; padding:16px 18px; overflow:hidden;
+}
+.ticket::before,.ticket::after{
+  content:''; position:absolute; width:22px; height:22px; border-radius:50%; background:var(--bg);
+  top:50%; transform:translateY(-50%);
+}
+.ticket::before{left:-11px} .ticket::after{right:-11px}
+.ticket .row{display:flex; align-items:center; gap:12px}
+.ticket .label{font-size:.72rem; font-weight:800; letter-spacing:.1em; text-transform:uppercase; color:var(--muted)}
+.ticket .code{
+  font-family:ui-monospace,'SF Mono',Menlo,monospace; font-size:1.7rem; font-weight:700;
+  letter-spacing:.28em; color:var(--green-dark); flex:1;
+}
+.ticket .divider{border-top:2px dashed var(--line); margin:10px 0}
+.ticket .hint{font-size:.8rem; color:var(--muted)}
+.btn-copy{
+  background:var(--green-soft); color:var(--green-dark); font-weight:800; border-radius:12px; padding:9px 14px;
+}
+.members{display:flex; align-items:center; margin-top:10px}
+.members .avatar{margin-right:-8px; width:30px; height:30px; font-size:.72rem}
+.members .mnames{margin-left:16px; font-size:.82rem; color:var(--muted)}
+
+/* ---------- Modales ---------- */
+.overlay{
+  position:fixed; inset:0; background:rgba(20,32,26,.42); display:grid; place-items:end center; z-index:50;
+  animation:fade .15s ease;
+}
+@keyframes fade{from{opacity:0}}
+.sheet{
+  background:var(--card); border-radius:24px 24px 0 0; width:100%; max-width:520px;
+  padding:22px 20px calc(24px + env(safe-area-inset-bottom));
+  animation:up .2s ease;
+}
+@keyframes up{from{transform:translateY(30px); opacity:0}}
+.sheet h3{margin:0 0 14px; font-size:1.25rem; color:var(--green-dark)}
+.field{margin-bottom:14px}
+.field label{display:block; font-size:.8rem; font-weight:800; color:var(--muted); margin-bottom:6px}
+.field input{
+  width:100%; border:1.5px solid var(--line); border-radius:14px; padding:12px 14px; outline:none; background:var(--bg);
+}
+.field input:focus{border-color:var(--green)}
+.type-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:8px}
+.type-opt{
+  border:1.5px solid var(--line); border-radius:14px; padding:10px 4px; text-align:center; font-size:.78rem; font-weight:800;
+  display:flex; flex-direction:column; gap:2px; align-items:center; background:var(--bg);
+}
+.type-opt .e{font-size:1.25rem}
+.type-opt.sel{border-color:var(--green); background:var(--green-soft); color:var(--green-dark)}
+.btn-primary{
+  width:100%; background:var(--green); color:#fff; font-weight:800; border-radius:999px; padding:14px; margin-top:6px;
+  font-size:1rem;
+}
+.btn-primary:disabled{opacity:.5}
+.btn-ghost{width:100%; padding:12px; color:var(--muted); font-weight:700}
+.btn-danger-ghost{width:100%; padding:12px; color:var(--danger); font-weight:800}
+
+/* ---------- Toast ---------- */
+.toast{
+  position:fixed; left:50%; bottom:calc(96px + env(safe-area-inset-bottom)); transform:translateX(-50%);
+  background:var(--ink); color:#fff; padding:10px 18px; border-radius:999px; font-weight:700; font-size:.9rem;
+  z-index:99; animation:fade .15s ease; box-shadow:0 6px 20px rgba(0,0,0,.25); white-space:nowrap;
+}
+.loader{text-align:center; color:var(--muted); padding:40px 0}
+@media (prefers-reduced-motion: reduce){
+  *{animation:none !important; transition:none !important}
+}
+</style>
+</head>
+<body>
+<div id="app" class="app"><div class="loader">Cargando…</div></div>
+
+<script type="module">
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+
+const SUPABASE_URL = 'https://mseiqleparjnchmgnwwa.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_wyVIc7gBfLl__5VtAh30_w_lH-cJ7Lf';
+const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const $app = document.getElementById('app');
+const TYPES = {
+  compras:    { e:'🛒', label:'Compras',    bg:'#E3F0E9' },
+  tareas:     { e:'🧹', label:'Tareas',     bg:'#FCEEDC' },
+  pendientes: { e:'📌', label:'Pendientes', bg:'#E8ECF8' },
+  otra:       { e:'📝', label:'Otra',       bg:'#F3E9F5' },
+};
+
+let session = null;
+let channel = null;
+const esc = s => (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const firstName = u => (u?.first_name || u?.display_name?.trim() || u?.email || '?').split(/[\s@]/)[0];
+const initial = u => firstName(u).charAt(0).toUpperCase();
+
+function toast(msg){
+  document.querySelector('.toast')?.remove();
+  const t = document.createElement('div');
+  t.className = 'toast'; t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2200);
+}
+
+/* ---------------- Auth ---------------- */
+async function init(){
+  const { data } = await sb.auth.getSession();
+  session = data.session;
+  sb.auth.onAuthStateChange((_e, s) => {
+    const was = !!session; session = s;
+    if (!!s !== was) route();
+  });
+  if (session) await syncProfile();
+  window.addEventListener('hashchange', route);
+  route();
+}
+
+async function syncProfile(){
+  // Completa nombre/avatar en sys_user desde los metadatos de Google (primer login)
+  try{
+    const u = session.user;
+    const meta = u.user_metadata || {};
+    const { data: me } = await sb.from('sys_user').select('first_name, avatar_url').eq('id', u.id).single();
+    if (me && !me.first_name && (meta.full_name || meta.name)){
+      const parts = (meta.full_name || meta.name).split(' ');
+      await sb.from('sys_user').update({
+        first_name: parts[0],
+        last_name: parts.slice(1).join(' ') || null,
+        avatar_url: meta.avatar_url || meta.picture || null,
+        last_login_at: new Date().toISOString(),
+      }).eq('id', u.id);
+    }
+  }catch(e){ console.warn('syncProfile', e); }
+}
+
+function loginView(){
+  $app.innerHTML = `
+    <div class="login">
+      <div class="mark">🛒</div>
+      <h1>Listas de la familia</h1>
+      <p>Compras, tareas y pendientes compartidos — se actualizan en vivo en todos los celulares.</p>
+      <button class="btn-google" id="btnGoogle">
+        <svg viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z"/><path fill="#FBBC05" d="M5.84 14.1a6.6 6.6 0 0 1 0-4.2V7.06H2.18a11 11 0 0 0 0 9.88l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15A11 11 0 0 0 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
+        Entrar con Google
+      </button>
+    </div>`;
+  document.getElementById('btnGoogle').onclick = () =>
+    sb.auth.signInWithOAuth({ provider:'google', options:{ redirectTo: location.origin + location.pathname } });
+}
+
+/* ---------------- Router ---------------- */
+function route(){
+  if (channel){ sb.removeChannel(channel); channel = null; }
+  if (!session) return loginView();
+  const h = location.hash;
+  const m = h.match(/^#\/list\/([0-9a-f-]+)/i);
+  if (m) return listView(m[1]);
+  homeView();
+}
+
+/* ---------------- Home ---------------- */
+async function homeView(){
+  $app.innerHTML = `<div class="loader">Cargando listas…</div>`;
+  const me = session.user;
+  const [{ data: lists, error }, { data: items }] = await Promise.all([
+    sb.from('fam_list').select('*').eq('is_archived', false).order('created_at'),
+    sb.from('fam_item').select('list_id, is_done'),
+  ]);
+  if (error){ $app.innerHTML = `<div class="empty">Error cargando listas: ${esc(error.message)}</div>`; return; }
+
+  const pending = {};
+  (items||[]).forEach(i => { if(!i.is_done) pending[i.list_id] = (pending[i.list_id]||0)+1; });
+
+  const meta = me.user_metadata || {};
+  const avatar = meta.avatar_url || meta.picture;
+
+  $app.innerHTML = `
+    <div class="topbar">
+      <div class="brand">Listas <span>·</span> Familia</div>
+      <button class="avatar" id="btnLogout" title="Cerrar sesión">${avatar ? `<img src="${esc(avatar)}" alt="">` : esc((meta.name||me.email||'?').charAt(0).toUpperCase())}</button>
+    </div>
+    <div class="section-label">Nuestras listas</div>
+    <div id="lists">
+      ${(lists && lists.length) ? lists.map(l => {
+        const t = TYPES[l.list_type] || TYPES.otra;
+        const p = pending[l.id] || 0;
+        return `<button class="list-card" data-id="${l.id}">
+          <div class="emoji" style="background:${l.color ? esc(l.color)+'22' : t.bg}">${esc(l.icon) || t.e}</div>
+          <div class="info">
+            <div class="name">${esc(l.name)}</div>
+            <div class="meta">${t.label}</div>
+          </div>
+          <div class="count ${p ? '' : 'zero'}">${p ? p : '✓'}</div>
+        </button>`;
+      }).join('') : `<div class="empty"><div class="big">🧺</div>Todavía no hay listas.<br>Crea la primera o únete con un código.</div>`}
+    </div>
+    <div class="home-actions">
+      <button class="action-tile" id="btnNew"><span class="ico">➕</span>Nueva lista<small>Compras, tareas…</small></button>
+      <button class="action-tile" id="btnJoin"><span class="ico">🎟️</span>Unirme<small>Con un código</small></button>
+    </div>`;
+
+  document.querySelectorAll('.list-card').forEach(el => el.onclick = () => location.hash = `#/list/${el.dataset.id}`);
+  document.getElementById('btnNew').onclick = newListSheet;
+  document.getElementById('btnJoin').onclick = joinSheet;
+  document.getElementById('btnLogout').onclick = () => {
+    if (confirm('¿Cerrar sesión?')) sb.auth.signOut();
+  };
+
+  channel = sb.channel('home')
+    .on('postgres_changes', { event:'*', schema:'public', table:'fam_list' }, () => { if(!location.hash.startsWith('#/list/')) homeView(); })
+    .on('postgres_changes', { event:'*', schema:'public', table:'fam_list_member' }, () => { if(!location.hash.startsWith('#/list/')) homeView(); })
+    .subscribe();
+}
+
+function newListSheet(){
+  let type = 'compras';
+  const ov = sheet(`
+    <h3>Nueva lista</h3>
+    <div class="field"><label>Nombre</label><input id="fName" placeholder="Ej: Supermercado" maxlength="60" autocomplete="off"></div>
+    <div class="field"><label>Tipo</label>
+      <div class="type-grid">${Object.entries(TYPES).map(([k,t]) =>
+        `<button class="type-opt ${k===type?'sel':''}" data-t="${k}"><span class="e">${t.e}</span>${t.label}</button>`).join('')}
+      </div>
+    </div>
+    <button class="btn-primary" id="fCreate">Crear lista</button>
+    <button class="btn-ghost" data-close>Cancelar</button>`);
+  ov.querySelectorAll('.type-opt').forEach(b => b.onclick = () => {
+    type = b.dataset.t;
+    ov.querySelectorAll('.type-opt').forEach(x => x.classList.toggle('sel', x===b));
+  });
+  const inp = ov.querySelector('#fName'); inp.focus();
+  ov.querySelector('#fCreate').onclick = async (e) => {
+    const name = inp.value.trim();
+    if (!name) return inp.focus();
+    e.target.disabled = true;
+    const { data, error } = await sb.from('fam_list')
+      .insert({ name, list_type: type, created_by: session.user.id })
+      .select().single();
+    if (error){ e.target.disabled = false; return toast('Error: ' + error.message); }
+    ov.remove();
+    location.hash = `#/list/${data.id}`;
+  };
+}
+
+function joinSheet(){
+  const ov = sheet(`
+    <h3>Unirme a una lista</h3>
+    <div class="field"><label>Código de 6 caracteres</label>
+      <input id="fCode" placeholder="ABC123" maxlength="6" autocomplete="off" autocapitalize="characters" style="text-transform:uppercase; letter-spacing:.2em; font-weight:800; text-align:center">
+    </div>
+    <button class="btn-primary" id="fJoin">Unirme</button>
+    <button class="btn-ghost" data-close>Cancelar</button>`);
+  const inp = ov.querySelector('#fCode'); inp.focus();
+  ov.querySelector('#fJoin').onclick = async (e) => {
+    const code = inp.value.trim().toUpperCase();
+    if (code.length < 6) return inp.focus();
+    e.target.disabled = true;
+    const { data, error } = await sb.rpc('fn_fam_join_by_code', { p_code: code });
+    if (error){ e.target.disabled = false; return toast(error.message.includes('inválido') ? 'Código inválido 😕' : 'Error: '+error.message); }
+    ov.remove();
+    toast('¡Te uniste a la lista! 🎉');
+    location.hash = `#/list/${data}`;
+  };
+}
+
+/* ---------------- Vista de lista ---------------- */
+async function listView(id){
+  $app.innerHTML = `<div class="loader">Abriendo lista…</div>`;
+  const [{ data: list, error }, { data: members }] = await Promise.all([
+    sb.from('fam_list').select('*').eq('id', id).single(),
+    sb.from('fam_list_member').select('member_role, user_id, sys_user(first_name, last_name, display_name, email, avatar_url)').eq('list_id', id),
+  ]);
+  if (error || !list){
+    $app.innerHTML = `<div class="empty">No se pudo abrir la lista.<br><small>${esc(error?.message||'')}</small></div>
+      <button class="btn-ghost" onclick="location.hash=''">← Volver</button>`;
+    return;
+  }
+  const t = TYPES[list.list_type] || TYPES.otra;
+  const myRole = members?.find(m => m.user_id === session.user.id)?.member_role || 'viewer';
+  const canEdit = myRole === 'owner' || myRole === 'editor';
+  const userById = {}; (members||[]).forEach(m => userById[m.user_id] = m.sys_user);
+
+  $app.innerHTML = `
+    <div class="topbar">
+      <button class="back-btn" id="btnBack">←</button>
+      <div class="brand" style="font-size:1.1rem">${t.e} ${esc(list.name)}</div>
+    </div>
+    <div class="chip-row">
+      <span class="chip">${t.label}</span>
+      <span class="chip orange" id="chipPending"></span>
+    </div>
+    <div id="items"></div>
+    <div class="ticket">
+      <div class="row">
+        <div style="flex:1">
+          <div class="label">Código para compartir</div>
+          <div class="code">${esc(list.share_code)}</div>
+        </div>
+        <button class="btn-copy" id="btnCopy">Copiar</button>
+      </div>
+      <div class="divider"></div>
+      <div class="hint">Quien entre a la app y use este código se une a la lista al instante.</div>
+      <div class="members" id="membersRow"></div>
+    </div>
+    ${myRole==='owner'
+      ? `<button class="btn-danger-ghost" id="btnDelete">Eliminar lista</button>`
+      : `<button class="btn-danger-ghost" id="btnLeave">Salir de la lista</button>`}
+    ${canEdit ? `
+    <div class="addbar"><div class="inner">
+      <input id="fItem" placeholder="Agregar… ej: Pan · 2 kg" maxlength="120" autocomplete="off">
+      <button class="send" id="btnAdd">＋</button>
+    </div></div>` : ''}
+  `;
+
+  document.getElementById('btnBack').onclick = () => { location.hash = ''; };
+  document.getElementById('btnCopy').onclick = async () => {
+    try{ await navigator.clipboard.writeText(list.share_code); toast('Código copiado 📋'); }
+    catch{ toast(list.share_code); }
+  };
+
+  const $members = document.getElementById('membersRow');
+  $members.innerHTML = (members||[]).map(m => {
+    const u = m.sys_user;
+    return `<div class="avatar" title="${esc(firstName(u))}">${u?.avatar_url ? `<img src="${esc(u.avatar_url)}" alt="">` : esc(initial(u))}</div>`;
+  }).join('') + `<div class="mnames">${(members||[]).map(m => esc(firstName(m.sys_user))).join(', ')}</div>`;
+
+  document.getElementById('btnDelete')?.addEventListener('click', async () => {
+    if (!confirm(`¿Eliminar "${list.name}" y todos sus ítems? Esto no se puede deshacer.`)) return;
+    const { error } = await sb.from('fam_list').delete().eq('id', id);
+    if (error) return toast('Error: ' + error.message);
+    location.hash = '';
+  });
+  document.getElementById('btnLeave')?.addEventListener('click', async () => {
+    if (!confirm('¿Salir de esta lista?')) return;
+    const { error } = await sb.from('fam_list_member').delete().eq('list_id', id).eq('user_id', session.user.id);
+    if (error) return toast('Error: ' + error.message);
+    location.hash = '';
+  });
+
+  /* --- ítems --- */
+  const $items = document.getElementById('items');
+  async function loadItems(){
+    const { data: items, error } = await sb.from('fam_item').select('*')
+      .eq('list_id', id)
+      .order('is_done', { ascending: true })
+      .order('created_at', { ascending: false });
+    if (error) return;
+    const pend = items.filter(i => !i.is_done).length;
+    document.getElementById('chipPending').textContent = pend ? `${pend} pendiente${pend>1?'s':''}` : 'Todo listo ✓';
+    $items.innerHTML = items.length ? items.map(i => `
+      <div class="item ${i.is_done?'done':''}" data-id="${i.id}">
+        <button class="checkbox" data-check aria-label="${i.is_done?'Desmarcar':'Marcar'}">${i.is_done?'✓':''}</button>
+        <div class="body">
+          <div class="content">${esc(i.content)}${i.quantity?` <span class="qty">· ${esc(i.quantity)}</span>`:''}</div>
+          ${i.is_done && i.done_by && userById[i.done_by] ? `<div class="who">✓ ${esc(firstName(userById[i.done_by]))}</div>` : ''}
+        </div>
+        ${canEdit?`<button class="del" data-del aria-label="Eliminar">✕</button>`:''}
+      </div>`).join('')
+      : `<div class="empty"><div class="big">${t.e}</div>Lista vacía. ${canEdit?'Agrega el primer ítem abajo.':''}</div>`;
+
+    $items.querySelectorAll('[data-check]').forEach(b => b.onclick = async () => {
+      if (!canEdit) return toast('Solo lectura en esta lista');
+      const el = b.closest('.item'); const done = !el.classList.contains('done');
+      el.classList.toggle('done', done); // optimista
+      const { error } = await sb.from('fam_item').update({
+        is_done: done,
+        done_by: done ? session.user.id : null,
+        done_at: done ? new Date().toISOString() : null,
+      }).eq('id', el.dataset.id);
+      if (error){ el.classList.toggle('done', !done); toast('Error: '+error.message); }
+    });
+    $items.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+      const el = b.closest('.item');
+      el.style.opacity = .4;
+      const { error } = await sb.from('fam_item').delete().eq('id', el.dataset.id);
+      if (error){ el.style.opacity = 1; toast('Error: '+error.message); }
+    });
+  }
+  await loadItems();
+
+  if (canEdit){
+    const inp = document.getElementById('fItem');
+    const add = async () => {
+      const raw = inp.value.trim(); if (!raw) return;
+      // "Pan · 2 kg" o "Pan - 2 kg" → content + quantity
+      const m = raw.split(/\s[·\-–]\s/);
+      inp.value = ''; inp.focus();
+      const { error } = await sb.from('fam_item').insert({
+        list_id: id, content: m[0].trim(), quantity: m[1]?.trim() || null, created_by: session.user.id,
+      });
+      if (error) toast('Error: ' + error.message);
+    };
+    document.getElementById('btnAdd').onclick = add;
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') add(); });
+  }
+
+  channel = sb.channel('list-'+id)
+    .on('postgres_changes', { event:'*', schema:'public', table:'fam_item', filter:`list_id=eq.${id}` }, loadItems)
+    .on('postgres_changes', { event:'*', schema:'public', table:'fam_list', filter:`id=eq.${id}` }, () => {
+      if (location.hash.includes(id)) listView(id);
+    })
+    .subscribe();
+}
+
+/* ---------------- Utilidades UI ---------------- */
+function sheet(html){
+  const ov = document.createElement('div');
+  ov.className = 'overlay';
+  ov.innerHTML = `<div class="sheet">${html}</div>`;
+  ov.addEventListener('click', e => { if (e.target === ov || e.target.hasAttribute('data-close')) ov.remove(); });
+  document.body.appendChild(ov);
+  return ov;
+}
+
+/* ---------------- Service worker ---------------- */
+if ('serviceWorker' in navigator){
+  navigator.serviceWorker.register('sw.js').catch(()=>{});
+}
+
+init();
+</script>
+</body>
+</html>
