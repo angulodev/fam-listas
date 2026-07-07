@@ -88,6 +88,19 @@ a{color:var(--pri)}
 .chart .bar.hit{background:var(--pri)}
 .chart .bar .v{position:absolute; top:-16px; left:50%; transform:translateX(-50%); font-size:.66rem; font-weight:800; color:var(--pri-dark)}
 .chart .d{font-size:.66rem; font-weight:800; color:var(--muted)}
+.chart-card .wk{font-size:.78rem; color:var(--muted); font-weight:700; margin-top:8px}
+.mini-item{display:flex; align-items:center; gap:11px; background:var(--card); border-radius:14px;
+  padding:10px 13px; margin-bottom:8px; box-shadow:var(--shadow); width:100%; text-align:left}
+.mini-item .me{width:34px; height:34px; border-radius:11px; display:grid; place-items:center; font-size:1.05rem; background:var(--pri-soft); flex-shrink:0}
+.mini-item .mt{flex:1; min-width:0; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.mini-item .mt small{display:block; color:var(--muted); font-weight:700; font-size:.72rem}
+.mini-item .arr{color:var(--muted)}
+.list-card.continue{border:2px solid var(--pri)}
+.feed{background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow); padding:4px 14px; margin-bottom:4px}
+.feed .f{display:flex; gap:10px; padding:10px 0; border-bottom:1px solid var(--line); font-size:.86rem; align-items:center; min-width:0}
+.feed .f > span:not(.tm){flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.feed .f:last-child{border-bottom:none}
+.feed .f .tm{color:var(--muted); font-size:.72rem; white-space:nowrap; flex-shrink:0}
 
 /* ---------- Cards de listas ---------- */
 .section-label{font-size:.78rem; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:16px 4px 8px}
@@ -338,14 +351,16 @@ function route(){
 async function homeView(){
   $app.innerHTML = `<div class="loader">Cargando…</div>`;
   const me = session.user;
-  const [{ data: lists, error }, { data: items }, { data: myRow }, { data: myMems }] = await Promise.all([
+  const [{ data: lists, error }, { data: items }, { data: myRow }, { data: myMems }, { data: users }] = await Promise.all([
     sb.from('fam_list').select('*').eq('is_archived', false).order('created_at'),
-    sb.from('fam_item').select('list_id, content, is_done, done_at, price, assigned_to'),
+    sb.from('fam_item').select('list_id, content, is_done, done_at, price, assigned_to, created_by, created_at, done_by'),
     sb.from('sys_user').select('first_name, avatar_url').eq('id', me.id).single(),
     sb.from('fam_list_member').select('list_id, status').eq('user_id', me.id),
+    sb.from('sys_user').select('id, first_name, display_name, email, avatar_url'),
   ]);
   if (error){ $app.innerHTML = `<div class="empty">Error cargando listas: ${esc(error.message)}</div>`; return; }
   const statusByList = Object.fromEntries((myMems||[]).map(m => [m.list_id, m.status]));
+  const userById = Object.fromEntries((users||[]).map(u => [u.id, u]));
 
   /* --- estadísticas --- */
   const all = items || [];
@@ -353,7 +368,7 @@ async function homeView(){
   const dayKey = d => d.toISOString().slice(0,10);
   const last7 = [...Array(7)].map((_,i) => { const d = new Date(now); d.setDate(now.getDate()-(6-i)); return d; });
   const doneByDay = Object.fromEntries(last7.map(d => [dayKey(d), 0]));
-  let done7 = 0, spendMonth = 0;
+  let done7 = 0, spend7 = 0, spendMonth = 0;
   const perList = {};
   all.forEach(i => {
     perList[i.list_id] = perList[i.list_id] || { total:0, done:0 };
@@ -362,7 +377,7 @@ async function homeView(){
       perList[i.list_id].done++;
       if (i.done_at){
         const k = i.done_at.slice(0,10);
-        if (k in doneByDay){ doneByDay[k]++; done7++; }
+        if (k in doneByDay){ doneByDay[k]++; done7++; if (i.price) spend7 += Number(i.price); }
         const dd = new Date(i.done_at);
         if (dd.getMonth() === now.getMonth() && dd.getFullYear() === now.getFullYear() && i.price)
           spendMonth += Number(i.price);
@@ -372,6 +387,31 @@ async function homeView(){
   const pendTotal = all.filter(i => !i.is_done).length;
   const maxDay = Math.max(1, ...Object.values(doneByDay));
   const DL = ['D','L','M','X','J','V','S'];
+  const listById = Object.fromEntries((lists||[]).map(l => [l.id, l]));
+  const lEmoji = l => l.icon ? esc(l.icon) : (TYPES[l.list_type] || TYPES.otra).e;
+
+  /* Te toca a ti */
+  const myTasks = all.filter(i => !i.is_done && i.assigned_to === me.id && listById[i.list_id]).slice(0, 4);
+
+  /* Actividad reciente */
+  const events = [];
+  all.forEach(i => {
+    const l = listById[i.list_id]; if (!l) return;
+    if (i.created_at && i.created_by)
+      events.push({ ts:i.created_at, who:i.created_by, verb:'agregó', item:i.content, l });
+    if (i.is_done && i.done_at && i.done_by)
+      events.push({ ts:i.done_at, who:i.done_by, verb:(l.list_type==='compras'?'compró':'completó'), item:i.content, l });
+  });
+  events.sort((a,b) => b.ts.localeCompare(a.ts));
+  const feed = events.slice(0, 5);
+
+  /* Lista más activa */
+  let activeL = null, activeP = 0;
+  (lists||[]).forEach(l => {
+    if (statusByList[l.id] === 'pending') return;
+    const s = perList[l.id]; const p = s ? s.total - s.done : 0;
+    if (p > activeP){ activeP = p; activeL = l; }
+  });
 
   const meta = me.user_metadata || {};
   const avatar = myRow?.avatar_url || meta.avatar_url || meta.picture;
@@ -389,8 +429,17 @@ async function homeView(){
     <div class="stats">
       <button class="stat" id="statPend"><div class="n acc">${pendTotal}</div><div class="l">Pendientes ›</div></button>
       <div class="stat"><div class="n">${done7}</div><div class="l">Listos · 7d</div></div>
-      <div class="stat"><div class="n">${spendMonth ? clp(spendMonth) : '—'}</div><div class="l">Gasto del mes</div></div>
+      <button class="stat" id="statSpend"><div class="n">${spendMonth ? clp(spendMonth) : '—'}</div><div class="l">Gasto del mes ${spendMonth ? '›' : ''}</div></button>
     </div>
+
+    ${myTasks.length ? `
+    <div class="section-label" style="margin-top:6px">🙋 Te toca a ti</div>
+    ${myTasks.map(i => `
+      <button class="mini-item" data-goto="${i.list_id}">
+        <span class="me">${lEmoji(listById[i.list_id])}</span>
+        <span class="mt">${esc(i.content)}<small>${esc(listById[i.list_id].name)}</small></span>
+        <span class="arr">›</span>
+      </button>`).join('')}` : ''}
 
     <div class="chart-card">
       <div class="title">Actividad · últimos 7 días</div>
@@ -404,7 +453,31 @@ async function homeView(){
           </div>`;
         }).join('')}
       </div>
+      ${done7 ? `<div class="wk">Esta semana: ${done7} listo${done7>1?'s':''}${spend7 ? ` · ${clp(spend7)}` : ''} 💪</div>` : ''}
     </div>
+
+    ${activeL ? `
+    <button class="list-card continue" data-id="${activeL.id}">
+      <div class="emoji">${lEmoji(activeL)}</div>
+      <div class="info">
+        <div class="name">Seguir con ${esc(activeL.name)}</div>
+        <div class="meta">${activeP} pendiente${activeP>1?'s':''} esperándote</div>
+      </div>
+      <div class="count">${activeP}</div>
+    </button>` : ''}
+
+    ${feed.length ? `
+    <div class="section-label">Actividad reciente</div>
+    <div class="feed">
+      ${feed.map(ev => {
+        const u = userById[ev.who];
+        return `<div class="f">
+          <div class="avatar" style="width:26px;height:26px;font-size:.65rem">${u?.avatar_url ? `<img src="${esc(u.avatar_url)}" alt="">` : esc(initial(u))}</div>
+          <span><b>${esc(firstName(u))}</b> ${ev.verb} ${esc(ev.item)} <span style="color:var(--muted)">· ${lEmoji(ev.l)}</span></span>
+          <span class="tm">${fmtWhen(ev.ts)}</span>
+        </div>`;
+      }).join('')}
+    </div>` : ''}
 
     <div class="section-label">Nuestras listas</div>
     <div id="lists">
@@ -438,10 +511,36 @@ async function homeView(){
       <button class="action-tile" id="btnJoin"><span class="ico">🎟️</span>Unirme<small>Con un código</small></button>
     </div>`;
 
-  document.querySelectorAll('.list-card').forEach(el => el.onclick = () => location.hash = `#/list/${el.dataset.id}`);
+  document.querySelectorAll('.list-card, .mini-item').forEach(el => el.onclick = () => {
+    const target = el.dataset.id || el.dataset.goto;
+    if (target) location.hash = `#/list/${target}`;
+  });
   document.getElementById('btnNew').onclick = newListSheet;
   document.getElementById('btnJoin').onclick = joinSheet;
   document.getElementById('btnProfile').onclick = () => profileSheet(myRow, avatar);
+  document.getElementById('statSpend').onclick = () => {
+    const monthItems = all.filter(i => {
+      if (!i.is_done || !i.done_at || !i.price || !listById[i.list_id]) return false;
+      const d = new Date(i.done_at);
+      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    });
+    if (!monthItems.length) return toast('Sin gastos registrados este mes');
+    const byList = {};
+    monthItems.forEach(i => byList[i.list_id] = (byList[i.list_id] || 0) + Number(i.price));
+    const top = [...monthItems].sort((a,b) => b.price - a.price).slice(0, 5);
+    sheet(`
+      <h3>Gasto del mes · ${clp(spendMonth)}</h3>
+      <div class="section-label" style="margin-top:0">Por lista</div>
+      <div class="detail-rows">
+        ${Object.entries(byList).sort((a,b) => b[1]-a[1]).map(([lid, sum]) =>
+          `<div class="dr"><b>${lEmoji(listById[lid])} ${esc(listById[lid].name)}</b><span>${clp(sum)}</span></div>`).join('')}
+      </div>
+      <div class="section-label">Más caros</div>
+      <div class="detail-rows">
+        ${top.map(i => `<div class="dr"><b>${esc(i.content)}</b><span>${clp(i.price)}</span></div>`).join('')}
+      </div>
+      <button class="btn-ghost" data-close>Cerrar</button>`);
+  };
   document.getElementById('statPend').onclick = () => {
     const listById = Object.fromEntries((lists||[]).map(l => [l.id, l]));
     const pend = all.filter(i => !i.is_done && listById[i.list_id]);
