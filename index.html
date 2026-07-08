@@ -461,7 +461,11 @@ async function init(){
     if (!!s !== was) route();
   });
   if (session) await syncProfile();
-  window.addEventListener('hashchange', route);
+  window.addEventListener('hashchange', () => {
+    if (document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches){
+      document.startViewTransition(() => route());
+    } else route();
+  });
   route();
 }
 
@@ -745,6 +749,12 @@ async function homeView(){
     const dw = l.list_type === 'compras' ? 'comprado' : 'completado';
     const res = await markDoneSheet(i, dw);
     if (!res) return;
+    if (res.__notFound){
+      const { error } = await sb.from('fam_item').update({ not_found: true }).eq('id', i.id);
+      if (error) return toast('Error: ' + error.message);
+      toast('Marcado: no se encontró 😕');
+      return homeView();
+    }
     const { error } = await sb.from('fam_item').update({
       is_done: true, done_by: me.id, done_at: new Date().toISOString(),
       not_found: false, ...res,
@@ -1175,6 +1185,12 @@ async function listView(id){
       if (done){
         const res = await markDoneSheet(i, doneWord);
         if (!res) return;
+        if (res.__notFound){
+          const { error } = await sb.from('fam_item').update({ not_found: true }).eq('id', i.id);
+          if (error) return toast('Error: '+error.message);
+          toast('Marcado: no se encontró 😕');
+          return loadItems();
+        }
         extra = res;
       }
       const { error } = await sb.from('fam_item').update({
@@ -1389,7 +1405,11 @@ function markDoneSheet(i, doneWord){
         ${askPrice ? `<div class="field"><label>Precio final (CLP)</label><input id="mkPrice" type="number" inputmode="numeric" min="0" value="${Number(i.price)}" placeholder="4990"></div>` : ''}
       </div>` : ''}
       <button class="btn-primary" id="mkOk">Sí, ${doneWord} ✓</button>
+      ${!i.not_found ? `<button class="btn-ghost" id="mkNf" style="color:var(--acc); filter:saturate(1.3) brightness(.85); font-weight:800">🚫 No se encontró</button>` : ''}
       <button class="btn-ghost" data-close>Cancelar</button>`);
+    ov.querySelector('#mkNf')?.addEventListener('click', () => {
+      settled = true; ov.remove(); resolve({ __notFound: true });
+    });
     ov.querySelector('#mkOk').onclick = () => {
       settled = true;
       const out = {};
