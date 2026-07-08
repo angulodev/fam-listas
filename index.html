@@ -34,6 +34,30 @@
   --acc:#E8833A; --acc-soft:#FBEBDC;
   --line:#DFE7F0; --done:#9AA8B8; --danger:#C0492F;
 }
+[data-theme="rosa"]{
+  --bg:#FBF2F6; --card:#FFFFFF; --ink:#36202B; --muted:#9A7386;
+  --pri:#C74B7F; --pri-dark:#93275A; --pri-soft:#F8E1EB;
+  --acc:#7A65C9; --acc-soft:#EAE5F8;
+  --line:#F0DCE5; --done:#C6A5B5; --danger:#B0302F;
+}
+[data-theme="lila"]{
+  --bg:#F7F3FB; --card:#FFFFFF; --ink:#2C2338; --muted:#82758F;
+  --pri:#8A5BC4; --pri-dark:#5E378F; --pri-soft:#EEE6F8;
+  --acc:#E0779A; --acc-soft:#FAE3EB;
+  --line:#E7DEF1; --done:#B4A7C4; --danger:#B0302F;
+}
+[data-theme="menta"]{
+  --bg:#F0F7F5; --card:#FFFFFF; --ink:#1E322E; --muted:#6E837E;
+  --pri:#0E9C8D; --pri-dark:#086B60; --pri-soft:#DFF3F0;
+  --acc:#F08C4D; --acc-soft:#FBE9DD;
+  --line:#DEEAE6; --done:#9BB3AD; --danger:#C0492F;
+}
+[data-theme="coral"]{
+  --bg:#FBF3F1; --card:#FFFFFF; --ink:#38241F; --muted:#97786F;
+  --pri:#E4574D; --pri-dark:#A83229; --pri-soft:#FBE3E1;
+  --acc:#2E9C8F; --acc-soft:#DFF2EF;
+  --line:#F0DFDB; --done:#C7A69E; --danger:#8E1F1F;
+}
 [data-theme="atardecer"]{
   --bg:#FAF2EB; --card:#FFFFFF; --ink:#3A2A20; --muted:#93796A;
   --pri:#C2571B; --pri-dark:#8C3B0E; --pri-soft:#F8E4D5;
@@ -372,12 +396,17 @@ const TYPES = {
   tareas:     { e:'🧹', label:'Tareas' },
   pendientes: { e:'📌', label:'Pendientes' },
   otra:       { e:'📝', label:'Otra' },
+  externa:    { e:'🔗', label:'Externa' },
 };
 const THEMES = {
   verde:     { label:'Verde',     sw:'#157B57', bar:'#157B57' },
   oscuro:    { label:'Oscuro',    sw:'#1D2B24', bar:'#141F1A' },
   cielo:     { label:'Cielo',     sw:'#1D6FB8', bar:'#1D6FB8' },
   atardecer: { label:'Atardecer', sw:'#C2571B', bar:'#C2571B' },
+  rosa:      { label:'Rosa',      sw:'#C74B7F', bar:'#C74B7F' },
+  lila:      { label:'Lila',      sw:'#8A5BC4', bar:'#8A5BC4' },
+  menta:     { label:'Menta',     sw:'#0E9C8D', bar:'#0E9C8D' },
+  coral:     { label:'Coral',     sw:'#E4574D', bar:'#E4574D' },
 };
 
 let session = null;
@@ -541,7 +570,7 @@ async function homeView(){
   const me = session.user;
   const [{ data: lists, error }, { data: items }, { data: myRow }, { data: myMems }, { data: users }] = await Promise.all([
     sb.from('fam_list').select('*').eq('is_archived', false).order('created_at'),
-    sb.from('fam_item').select('list_id, content, is_done, done_at, price, assigned_to, created_by, created_at, done_by'),
+    sb.from('fam_item').select('id, list_id, content, quantity, is_done, done_at, price, assigned_to, created_by, created_at, done_by'),
     sb.from('sys_user').select('first_name, avatar_url').eq('id', me.id).single(),
     sb.from('fam_list_member').select('list_id, status').eq('user_id', me.id),
     sb.from('sys_user').select('id, first_name, display_name, email, avatar_url'),
@@ -619,12 +648,12 @@ async function homeView(){
     <div class="todo-panel">
       <div class="tp-head">🙋 Te toca a ti <span class="tp-n">${myTasks.length}</span></div>
       ${myTasks.map(i => `
-      <button class="tp-row" data-goto="${i.list_id}">
-        <span class="dot"></span>
+      <div class="tp-row" data-goto="${i.list_id}">
+        <button class="tpc" data-tdone="${i.id}" aria-label="Marcar listo"></button>
         <span class="c">${esc(i.content)}</span>
         <span class="ln">${lEmoji(listById[i.list_id])} ${esc(listById[i.list_id].name)}</span>
         <span class="arr">›</span>
-      </button>`).join('')}
+      </div>`).join('')}
     </div>` : ''}
 
     <div class="section-label">Nuestras listas</div>
@@ -643,6 +672,16 @@ async function homeView(){
               <div class="meta">Esperando aprobación del dueño</div>
             </div>
           </button>`;
+        }
+        if (l.list_type === 'externa'){
+          return `<div class="list-card ext" data-ext="${esc(l.external_url || '')}">
+            <div class="emoji">${esc(l.icon) || '🛍️'}</div>
+            <div class="info">
+              <div class="name">${esc(l.name)}</div>
+              <div class="meta">Carrito externo · toca para abrir 🔗</div>
+            </div>
+            <button class="mng" data-manage="${l.id}" aria-label="Gestionar">⚙️</button>
+          </div>`;
         }
         const s = perList[l.id] || { total:0, done:0 };
         const p = s.total - s.done;
@@ -676,9 +715,35 @@ async function homeView(){
       }).join('')}
     </div>` : ''}`;
 
-  document.querySelectorAll('.list-card, .mini-item').forEach(el => el.onclick = () => {
+  document.querySelectorAll('.list-card, .mini-item, .tp-row').forEach(el => el.onclick = (e) => {
+    if (e.target.closest('[data-tdone]') || e.target.closest('[data-manage]')) return;
+    if (el.dataset.ext !== undefined){
+      if (el.dataset.ext) window.open(el.dataset.ext, '_blank');
+      else toast('Esta lista externa no tiene URL configurada');
+      return;
+    }
     const target = el.dataset.id || el.dataset.goto;
     if (target) location.hash = `#/list/${target}`;
+  });
+  document.querySelectorAll('[data-manage]').forEach(b => b.onclick = (e) => {
+    e.stopPropagation();
+    location.hash = `#/list/${b.dataset.manage}`;
+  });
+  document.querySelectorAll('[data-tdone]').forEach(b => b.onclick = async (e) => {
+    e.stopPropagation();
+    const i = myTasks.find(t => t.id === b.dataset.tdone);
+    if (!i) return;
+    const l = listById[i.list_id];
+    const dw = l.list_type === 'compras' ? 'comprado' : 'completado';
+    const res = await markDoneSheet(i, dw);
+    if (!res) return;
+    const { error } = await sb.from('fam_item').update({
+      is_done: true, done_by: me.id, done_at: new Date().toISOString(),
+      not_found: false, quantity: res.quantity, price: res.price,
+    }).eq('id', i.id);
+    if (error) return toast('Error: ' + error.message);
+    toast('✓ Listo');
+    homeView();
   });
   document.getElementById('btnNew').onclick = () => location.hash = '#/new';
   document.getElementById('btnJoin').onclick = () => location.hash = '#/join';
@@ -1023,6 +1088,8 @@ async function listView(id){
     if (error) return;
     itemById = Object.fromEntries(items.map(i => [i.id, i]));
 
+    const pendNormal = items.filter(i => !i.is_done && !i.not_found);
+    const pendNf = items.filter(i => !i.is_done && i.not_found);
     const pendItems = items.filter(i => !i.is_done);
     const doneItems = items.filter(i => i.is_done)
       .sort((a,b) => (b.done_at||'').localeCompare(a.done_at||''));
@@ -1052,8 +1119,12 @@ async function listView(id){
     $items.innerHTML = !items.length
       ? `<div class="empty"><div class="big">${t.e}</div>Lista vacía. ${canEdit?'Agrega el primer ítem abajo.':''}</div>`
       : `
-        ${pendItems.map(renderItem).join('') ||
-          `<div class="empty"><div class="big">🎉</div>Nada pendiente. ¡Todo ${doneWord}!</div>`}
+        ${(pendNormal.length || pendNf.length)
+          ? pendNormal.map(renderItem).join('')
+          : `<div class="empty"><div class="big">🎉</div>Nada pendiente. ¡Todo ${doneWord}!</div>`}
+        ${pendNf.length ? `
+          <div class="done-head" style="color:var(--acc); filter:saturate(1.3) brightness(.85)">😕 No se encontró (${pendNf.length})</div>
+          ${pendNf.map(renderItem).join('')}` : ''}
         ${doneItems.length ? `
           <button class="done-head ${showDone?'open':''}" id="toggleDone">
             ✓ ${doneWord.charAt(0).toUpperCase()+doneWord.slice(1)}s (${doneItems.length}) <span class="arrow">▸</span>
@@ -1064,19 +1135,18 @@ async function listView(id){
 
     const toggleItem = async (i) => {
       const done = !i.is_done;
+      let extra = {};
       if (done){
-        const ok = await confirmSheet({
-          title: `¿${doneWord.charAt(0).toUpperCase()+doneWord.slice(1)}?`,
-          message: `Marcar "${i.content}" como ${doneWord}.`,
-          confirmLabel: `Sí, ${doneWord} ✓`,
-        });
-        if (!ok) return;
+        const res = await markDoneSheet(i, doneWord);
+        if (!res) return;
+        extra = { quantity: res.quantity, price: res.price };
       }
       const { error } = await sb.from('fam_item').update({
         is_done: done,
         done_by: done ? session.user.id : null,
         done_at: done ? new Date().toISOString() : null,
         not_found: false,
+        ...extra,
       }).eq('id', i.id);
       if (error) return toast('Error: '+error.message);
       loadItems();
@@ -1263,6 +1333,34 @@ function itemDetailSheet(i, userById, ctx = null){
 }
 
 /* ---------------- Utilidades UI ---------------- */
+/* Al marcar comprado: confirmar + ajustar cantidad y precio finales */
+function markDoneSheet(i, doneWord){
+  return new Promise(resolve => {
+    let settled = false;
+    const cap = doneWord.charAt(0).toUpperCase() + doneWord.slice(1);
+    const ov = sheet(`
+      <h3>¿${cap}?</h3>
+      <p class="msg">"${esc(i.content)}" — ajusta lo final si cambió:</p>
+      <div class="field-row">
+        <div class="field"><label>Cantidad final</label><input id="mkQty" value="${esc(i.quantity || '')}" placeholder="2 un" maxlength="30" autocomplete="off"></div>
+        <div class="field"><label>Precio final (CLP)</label><input id="mkPrice" type="number" inputmode="numeric" min="0" value="${i.price ? Number(i.price) : ''}" placeholder="4990"></div>
+      </div>
+      <button class="btn-primary" id="mkOk">Sí, ${doneWord} ✓</button>
+      <button class="btn-ghost" data-close>Cancelar</button>`);
+    ov.querySelector('#mkOk').onclick = () => {
+      settled = true;
+      const q = ov.querySelector('#mkQty').value.trim();
+      const p = parseFloat(ov.querySelector('#mkPrice').value);
+      ov.remove();
+      resolve({ quantity: q || null, price: isNaN(p) ? null : p });
+    };
+    const obs = new MutationObserver(() => {
+      if (!document.body.contains(ov)){ obs.disconnect(); if (!settled) resolve(null); }
+    });
+    obs.observe(document.body, { childList: true });
+  });
+}
+
 function confirmSheet({ title, message, confirmLabel = 'Confirmar', danger = false }){
   return new Promise(resolve => {
     let settled = false;
