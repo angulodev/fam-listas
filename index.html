@@ -326,6 +326,29 @@ body.has-nav .app{padding-bottom:170px}
 body.has-nav .fab{bottom:calc(96px + env(safe-area-inset-bottom))}
 body.has-nav .toast{bottom:calc(168px + env(safe-area-inset-bottom))}
 
+/* Panel "Te toca a ti": contenedor único, distinto de las listas */
+.todo-panel{
+  background:color-mix(in srgb, var(--pri) 6%, var(--card));
+  border:1px solid color-mix(in srgb, var(--pri) 28%, var(--line));
+  border-radius:var(--radius); padding:4px 16px 6px; margin:26px 0 0;
+}
+.todo-panel .tp-head{
+  display:flex; align-items:center; gap:8px; padding:12px 0 8px;
+  font-family:'Fredoka'; font-weight:600; color:var(--pri-dark); font-size:1.02rem;
+}
+.todo-panel .tp-n{
+  background:var(--pri); color:#fff; border-radius:999px; min-width:22px; height:22px;
+  display:grid; place-items:center; font-size:.78rem; font-family:'Nunito'; font-weight:800; padding:0 7px;
+}
+.todo-panel .tp-row{
+  display:flex; align-items:center; gap:11px; width:100%; text-align:left; padding:12px 0;
+  border-top:1px solid color-mix(in srgb, var(--line) 55%, transparent);
+}
+.tp-row .dot{width:9px; height:9px; border-radius:50%; background:var(--acc); flex-shrink:0}
+.tp-row .c{flex:1; font-weight:800; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.tp-row .ln{font-size:.74rem; color:var(--muted); font-weight:700; white-space:nowrap}
+.tp-row .arr{color:var(--muted)}
+
 /* Sheets más suaves */
 .sheet{border-radius:28px 28px 0 0}
 .type-opt, .theme-opt, .field input{border-radius:16px}
@@ -570,13 +593,7 @@ async function homeView(){
   events.sort((a,b) => b.ts.localeCompare(a.ts));
   const feed = events.slice(0, 5);
 
-  /* Lista más activa */
-  let activeL = null, activeP = 0;
-  (lists||[]).forEach(l => {
-    if (statusByList[l.id] === 'pending') return;
-    const s = perList[l.id]; const p = s ? s.total - s.done : 0;
-    if (p > activeP){ activeP = p; activeL = l; }
-  });
+
 
   const meta = me.user_metadata || {};
   const avatar = myRow?.avatar_url || meta.avatar_url || meta.picture;
@@ -599,27 +616,24 @@ async function homeView(){
     </div>
 
     ${myTasks.length ? `
-    <div class="section-label" style="margin-top:6px">🙋 Te toca a ti</div>
-    ${myTasks.map(i => `
-      <button class="mini-item" data-goto="${i.list_id}">
-        <span class="me">${lEmoji(listById[i.list_id])}</span>
-        <span class="mt">${esc(i.content)}<small>${esc(listById[i.list_id].name)}</small></span>
+    <div class="todo-panel">
+      <div class="tp-head">🙋 Te toca a ti <span class="tp-n">${myTasks.length}</span></div>
+      ${myTasks.map(i => `
+      <button class="tp-row" data-goto="${i.list_id}">
+        <span class="dot"></span>
+        <span class="c">${esc(i.content)}</span>
+        <span class="ln">${lEmoji(listById[i.list_id])} ${esc(listById[i.list_id].name)}</span>
         <span class="arr">›</span>
-      </button>`).join('')}` : ''}
-
-    ${activeL ? `
-    <button class="list-card continue" data-id="${activeL.id}">
-      <div class="emoji">${lEmoji(activeL)}</div>
-      <div class="info">
-        <div class="name">Seguir con ${esc(activeL.name)}</div>
-        <div class="meta">${activeP} pendiente${activeP>1?'s':''} esperándote</div>
-      </div>
-      <div class="count">${activeP}</div>
-    </button>` : ''}
+      </button>`).join('')}
+    </div>` : ''}
 
     <div class="section-label">Nuestras listas</div>
     <div id="lists">
-      ${(lists && lists.length) ? lists.map(l => {
+      ${(lists && lists.length) ? [...lists].sort((a,b) => {
+        const pa = perList[a.id] ? perList[a.id].total - perList[a.id].done : 0;
+        const pb = perList[b.id] ? perList[b.id].total - perList[b.id].done : 0;
+        return pb - pa;
+      }).map(l => {
         const t = TYPES[l.list_type] || TYPES.otra;
         if (statusByList[l.id] === 'pending'){
           return `<button class="list-card waiting" data-id="${l.id}">
