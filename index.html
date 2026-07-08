@@ -154,6 +154,20 @@ a{color:var(--pri)}
 .done-head .arrow{margin-left:auto; transition:transform .15s}
 .done-head.open .arrow{transform:rotate(90deg)}
 
+/* Barra de navegación inferior (opcional) */
+.bottomnav{position:fixed; bottom:0; left:0; right:0; z-index:45;
+  background:var(--card); border-top:1.5px solid var(--line);
+  display:flex; justify-content:space-around; gap:2px;
+  padding:6px 8px calc(8px + env(safe-area-inset-bottom));
+  box-shadow:0 -2px 14px rgba(0,0,0,.08)}
+.bottomnav .nv{flex:1; display:flex; flex-direction:column; align-items:center; gap:1px;
+  font-size:.68rem; font-weight:800; color:var(--muted); padding:4px 2px; border-radius:12px; max-width:90px}
+.bottomnav .nv span{font-size:1.15rem; line-height:1.2}
+.bottomnav .nv.on{color:var(--pri-dark); background:var(--pri-soft)}
+body.has-nav .app{padding-bottom:150px}
+body.has-nav .fab{bottom:calc(84px + env(safe-area-inset-bottom))}
+body.has-nav .toast{bottom:calc(150px + env(safe-area-inset-bottom))}
+
 /* Botón flotante de agregar */
 .fab{position:fixed; right:max(20px, calc(50% - 240px)); bottom:calc(22px + env(safe-area-inset-bottom));
   width:58px; height:58px; border-radius:50%; background:var(--pri); color:#fff; font-size:1.7rem;
@@ -342,9 +356,48 @@ function loginView(){
     sb.auth.signInWithOAuth({ provider:'google', options:{ redirectTo: location.origin + location.pathname } });
 }
 
+/* ---------------- Barra de navegación (opcional) ---------------- */
+const navEnabled = () => localStorage.getItem('fam-nav') === 'on';
+
+function renderNav(){
+  const existing = document.getElementById('bottomNav');
+  if (!navEnabled() || !session){
+    existing?.remove();
+    document.body.classList.remove('has-nav');
+    return;
+  }
+  document.body.classList.add('has-nav');
+  const onHome = !location.hash.startsWith('#/list/');
+  const html = `
+    <button class="nv ${onHome ? 'on' : ''}" data-nv="home"><span>🏠</span>Inicio</button>
+    <button class="nv" data-nv="new"><span>➕</span>Nueva</button>
+    <button class="nv" data-nv="join"><span>🎟️</span>Unirme</button>
+    <button class="nv" data-nv="profile"><span>👤</span>Perfil</button>`;
+  let nav = existing;
+  if (!nav){
+    nav = document.createElement('nav');
+    nav.id = 'bottomNav';
+    nav.className = 'bottomnav';
+    document.body.appendChild(nav);
+  }
+  nav.innerHTML = html;
+  nav.querySelector('[data-nv="home"]').onclick = () => { if (location.hash) location.hash = ''; else homeView(); };
+  nav.querySelector('[data-nv="new"]').onclick = () => newListSheet();
+  nav.querySelector('[data-nv="join"]').onclick = () => joinSheet();
+  nav.querySelector('[data-nv="profile"]').onclick = openProfile;
+}
+
+async function openProfile(){
+  const { data: myRow } = await sb.from('sys_user')
+    .select('first_name, avatar_url').eq('id', session.user.id).single();
+  const meta = session.user.user_metadata || {};
+  profileSheet(myRow, myRow?.avatar_url || meta.avatar_url || meta.picture);
+}
+
 /* ---------------- Router ---------------- */
 function route(){
   if (channel){ sb.removeChannel(channel); channel = null; }
+  renderNav();
   /* Deep link de invitación: #/join/CODIGO */
   const j = location.hash.match(/^#\/join\/([A-Z0-9]{4,10})/i);
   if (j){
@@ -599,12 +652,23 @@ function profileSheet(myRow, avatar){
           `<button class="theme-opt ${k===cur?'sel':''}" data-th="${k}"><span class="sw" style="background:${t.sw}"></span>${t.label}</button>`).join('')}
       </div>
     </div>
+    <div class="field"><label>Barra de navegación inferior</label>
+      <div class="type-grid" style="grid-template-columns:1fr 1fr">
+        <button class="type-opt ${navEnabled()?'sel':''}" data-nav="on"><span class="e">📱</span>Mostrar</button>
+        <button class="type-opt ${!navEnabled()?'sel':''}" data-nav="off"><span class="e">🚫</span>Ocultar</button>
+      </div>
+    </div>
     <button class="btn-primary" id="pSave">Guardar</button>
     <button class="btn-danger-ghost" id="pLogout">Cerrar sesión</button>`);
 
   ov.querySelectorAll('.theme-opt').forEach(b => b.onclick = () => {
     applyTheme(b.dataset.th);
     ov.querySelectorAll('.theme-opt').forEach(x => x.classList.toggle('sel', x===b));
+  });
+  ov.querySelectorAll('[data-nav]').forEach(b => b.onclick = () => {
+    localStorage.setItem('fam-nav', b.dataset.nav);
+    ov.querySelectorAll('[data-nav]').forEach(x => x.classList.toggle('sel', x===b));
+    renderNav();
   });
   ov.querySelector('#pSave').onclick = async (e) => {
     const name = ov.querySelector('#pName').value.trim();
