@@ -381,6 +381,37 @@ body.has-nav .toast{bottom:calc(168px + env(safe-area-inset-bottom))}
 .list-card.ext .meta{color:var(--pri-dark)}
 .list-card .mng{font-size:1.05rem; padding:6px; flex-shrink:0; filter:grayscale(.3)}
 
+/* Panel No se encontró (variante acc) */
+.todo-panel.nf{
+  background:color-mix(in srgb, var(--acc) 7%, var(--card));
+  border-color:color-mix(in srgb, var(--acc) 32%, var(--line));
+}
+.todo-panel.nf .tp-head{color:var(--acc); filter:saturate(1.3) brightness(.8)}
+.todo-panel.nf .tp-n{background:var(--acc)}
+.todo-panel.nf .dot{background:var(--acc)}
+
+/* Skeleton loaders */
+.sk{
+  border-radius:var(--radius); margin:14px 0;
+  background:linear-gradient(100deg,
+    color-mix(in srgb, var(--ink) 5%, transparent) 40%,
+    color-mix(in srgb, var(--ink) 10%, transparent) 50%,
+    color-mix(in srgb, var(--ink) 5%, transparent) 60%);
+  background-size:200% 100%;
+  animation:skm 1.1s infinite linear;
+}
+@keyframes skm{to{background-position:-200% 0}}
+
+/* Estados vacíos con más presencia */
+.empty{padding:44px 24px}
+.empty .big{font-size:2.6rem; display:block; margin-bottom:10px}
+
+/* Accesibilidad: foco visible con el color del tema */
+:focus-visible{
+  outline:3px solid color-mix(in srgb, var(--pri) 50%, transparent);
+  outline-offset:2px; border-radius:10px;
+}
+
 /* Sheets más suaves */
 .sheet{border-radius:28px 28px 0 0}
 .type-opt, .theme-opt, .field input{border-radius:16px}
@@ -399,6 +430,12 @@ const APP_URL = 'https://angulodev.github.io/fam-listas/';
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const $app = document.getElementById('app');
+const SKEL = `
+  <div class="sk" style="height:96px"></div>
+  <div class="sk" style="height:96px"></div>
+  <div class="sk" style="height:68px"></div>
+  <div class="sk" style="height:68px"></div>
+  <div class="sk" style="height:68px"></div>`;
 const TYPES = {
   compras:    { e:'🛒', label:'Compras' },
   tareas:     { e:'🧹', label:'Tareas' },
@@ -434,6 +471,8 @@ function fmtWhen(ts){
   if (same(d, yest)) return `ayer ${hm}`;
   return d.toLocaleDateString('es-CL', { day:'numeric', month:'short' }) + ` · ${hm}`;
 }
+
+const buzz = () => { try{ navigator.vibrate?.(12); }catch{} };
 
 function toast(msg){
   document.querySelector('.toast')?.remove();
@@ -578,11 +617,12 @@ function wireBack(){
 
 /* ---------------- Home / Dashboard ---------------- */
 async function homeView(){
-  $app.innerHTML = `<div class="loader">Cargando…</div>`;
+  $app.innerHTML = SKEL;
   const me = session.user;
+  const iso60 = new Date(Date.now() - 60*86400000).toISOString();
   const [{ data: lists, error }, { data: items }, { data: myRow }, { data: myMems }, { data: users }] = await Promise.all([
     sb.from('fam_list').select('*').eq('is_archived', false).order('created_at'),
-    sb.from('fam_item').select('id, list_id, content, quantity, is_done, done_at, price, assigned_to, created_by, created_at, done_by'),
+    sb.from('fam_item').select('id, list_id, content, quantity, is_done, done_at, price, assigned_to, created_by, created_at, done_by, not_found').or(`is_done.eq.false,done_at.gte.${iso60}`),
     sb.from('sys_user').select('first_name, avatar_url').eq('id', me.id).single(),
     sb.from('fam_list_member').select('list_id, status').eq('user_id', me.id),
     sb.from('sys_user').select('id, first_name, display_name, email, avatar_url'),
@@ -620,7 +660,8 @@ async function homeView(){
   const lEmoji = l => l.icon ? esc(l.icon) : (TYPES[l.list_type] || TYPES.otra).e;
 
   /* Te toca a ti */
-  const myTasks = all.filter(i => !i.is_done && i.assigned_to === me.id && listById[i.list_id]).slice(0, 4);
+  const myTasks = all.filter(i => !i.is_done && !i.not_found && i.assigned_to === me.id && listById[i.list_id]).slice(0, 4);
+  const nfItems = all.filter(i => !i.is_done && i.not_found && listById[i.list_id]).slice(0, 4);
 
   /* Actividad reciente */
   const events = [];
@@ -662,6 +703,18 @@ async function homeView(){
       ${myTasks.map(i => `
       <div class="tp-row" data-goto="${i.list_id}">
         <button class="tpc" data-tdone="${i.id}" aria-label="Marcar listo"></button>
+        <span class="c">${esc(i.content)}</span>
+        <span class="ln">${lEmoji(listById[i.list_id])} ${esc(listById[i.list_id].name)}</span>
+        <span class="arr">›</span>
+      </div>`).join('')}
+    </div>` : ''}
+
+    ${nfItems.length ? `
+    <div class="todo-panel nf">
+      <div class="tp-head">😕 No se encontró <span class="tp-n">${nfItems.length}</span></div>
+      ${nfItems.map(i => `
+      <div class="tp-row" data-goto="${i.list_id}">
+        <span class="dot"></span>
         <span class="c">${esc(i.content)}</span>
         <span class="ln">${lEmoji(listById[i.list_id])} ${esc(listById[i.list_id].name)}</span>
         <span class="arr">›</span>
@@ -760,6 +813,7 @@ async function homeView(){
       not_found: false, ...res,
     }).eq('id', i.id);
     if (error) return toast('Error: ' + error.message);
+    buzz();
     toast('✓ Listo');
     homeView();
   });
@@ -768,16 +822,22 @@ async function homeView(){
   document.getElementById('btnProfile').onclick = () => location.hash = '#/profile';
   document.querySelectorAll('[data-see]').forEach(b => b.onclick = () => location.hash = '#/see/' + b.dataset.see);
 
+  let homeTimer = null;
+  const refreshHome = () => {
+    if (location.hash) return;               // solo si seguimos en el home
+    clearTimeout(homeTimer);
+    homeTimer = setTimeout(() => { if (!location.hash) homeView(); }, 450);
+  };
   channel = sb.channel('home')
-    .on('postgres_changes', { event:'*', schema:'public', table:'fam_list' }, () => { if(!location.hash.startsWith('#/list/')) homeView(); })
-    .on('postgres_changes', { event:'*', schema:'public', table:'fam_item' }, () => { if(!location.hash.startsWith('#/list/')) homeView(); })
-    .on('postgres_changes', { event:'*', schema:'public', table:'fam_list_member' }, () => { if(!location.hash.startsWith('#/list/')) homeView(); })
+    .on('postgres_changes', { event:'*', schema:'public', table:'fam_list' }, refreshHome)
+    .on('postgres_changes', { event:'*', schema:'public', table:'fam_item' }, refreshHome)
+    .on('postgres_changes', { event:'*', schema:'public', table:'fam_list_member' }, refreshHome)
     .subscribe();
 }
 
 /* ---------------- Perfil ---------------- */
 async function profileView(){
-  $app.innerHTML = pageHead('Mi perfil') + `<div class="loader">Cargando…</div>`;
+  $app.innerHTML = pageHead('Mi perfil') + SKEL;
   wireBack();
   const me = session.user;
   const { data: myRow } = await sb.from('sys_user').select('first_name, avatar_url').eq('id', me.id).single();
@@ -835,11 +895,12 @@ async function profileView(){
 /* --- páginas de detalle de las tarjetas del home --- */
 async function seeView(kind){
   const TITLES = { pending:'Pendientes', today:'Listos hoy', week:'Esta semana', month:'Gasto del mes' };
-  $app.innerHTML = pageHead(TITLES[kind]) + `<div class="loader">Cargando…</div>`;
+  $app.innerHTML = pageHead(TITLES[kind]) + SKEL;
   wireBack();
+  const iso60 = new Date(Date.now() - 60*86400000).toISOString();
   const [{ data: lists }, { data: items }, { data: users }] = await Promise.all([
     sb.from('fam_list').select('*').eq('is_archived', false),
-    sb.from('fam_item').select('list_id, content, quantity, is_done, done_at, done_by, created_at, price, assigned_to, not_found'),
+    sb.from('fam_item').select('list_id, content, quantity, is_done, done_at, done_by, created_at, price, assigned_to, not_found').or(`is_done.eq.false,done_at.gte.${iso60}`),
     sb.from('sys_user').select('id, first_name, display_name, email'),
   ]);
   const listById = Object.fromEntries((lists||[]).map(l => [l.id, l]));
@@ -996,7 +1057,7 @@ async function uploadPhoto(listId, file){
 
 /* ---------------- Vista de lista ---------------- */
 async function listView(id){
-  $app.innerHTML = `<div class="loader">Abriendo lista…</div>`;
+  $app.innerHTML = SKEL;
   const [{ data: list, error }, { data: members }] = await Promise.all([
     sb.from('fam_list').select('*').eq('id', id).single(),
     sb.from('fam_list_member').select('member_role, status, user_id, sys_user(first_name, last_name, display_name, email, avatar_url)').eq('list_id', id),
@@ -1201,6 +1262,7 @@ async function listView(id){
         ...extra,
       }).eq('id', i.id);
       if (error) return toast('Error: '+error.message);
+      buzz();
       loadItems();
     };
 
@@ -1553,6 +1615,17 @@ function sheet(html){
 /* ---------------- Service worker ---------------- */
 if ('serviceWorker' in navigator){
   navigator.serviceWorker.register('sw.js').catch(()=>{});
+  let hadCtrl = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadCtrl){ hadCtrl = true; return; }
+    document.querySelector('.toast')?.remove();
+    const t = document.createElement('div');
+    t.className = 'toast';
+    t.style.cursor = 'pointer';
+    t.textContent = '✨ Nueva versión — toca para actualizar';
+    t.onclick = () => location.reload();
+    document.body.appendChild(t);
+  });
 }
 
 init();
