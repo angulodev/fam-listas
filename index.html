@@ -250,6 +250,86 @@ body.has-nav .toast{bottom:calc(150px + env(safe-area-inset-bottom))}
   z-index:99; animation:fade .15s ease; box-shadow:0 6px 20px rgba(0,0,0,.25); white-space:nowrap}
 .loader{text-align:center; color:var(--muted); padding:40px 0}
 @media (prefers-reduced-motion: reduce){ *{animation:none !important; transition:none !important} }
+
+/* ============================================================
+   REFRESH VISUAL v3.2 — minimalista, aire, color dinámico
+   (overrides: esta capa manda sobre las reglas anteriores)
+   ============================================================ */
+:root{--radius:20px}
+body{
+  background:
+    radial-gradient(120% 46% at 50% -8%, color-mix(in srgb, var(--pri) 9%, transparent), transparent 70%),
+    var(--bg);
+}
+/* Tarjetas: borde fino + sombra mínima, en vez de sombra pesada */
+.list-card, .item, .mini-item, .feed, .empty, .stat, .action-tile, .req{
+  border:1px solid var(--line);
+  box-shadow:0 1px 2px rgba(0,0,0,.03);
+}
+.list-card, .mini-item{margin-bottom:12px}
+.list-card{padding:16px}
+.empty{border-style:dashed; background:color-mix(in srgb, var(--card) 60%, transparent)}
+
+/* Respiración entre secciones */
+.greet{font-family:'Fredoka'; font-weight:600; font-size:1.4rem; color:var(--ink); margin:8px 4px 22px}
+.section-label{
+  margin:30px 6px 12px; font-size:.7rem; letter-spacing:.14em;
+  color:color-mix(in srgb, var(--muted) 75%, transparent);
+}
+.chip-row{margin:6px 0 18px}
+
+/* Stats con tinte dinámico del tema */
+.stats{gap:12px; margin-bottom:4px}
+.stat{
+  background:color-mix(in srgb, var(--pri) 5%, var(--card));
+  border-radius:18px; padding:16px 10px;
+}
+.stat .n{color:var(--pri-dark); font-size:1.45rem}
+.stat .n.acc{color:var(--acc); filter:saturate(1.3) brightness(.9)}
+.stat .l{margin-top:5px; color:color-mix(in srgb, var(--muted) 85%, transparent)}
+
+/* Progreso con gradiente del tema */
+.progress{height:6px; background:color-mix(in srgb, var(--pri) 10%, var(--line))}
+.progress i{background:linear-gradient(90deg, var(--pri), var(--pri-dark))}
+
+/* Botones primarios y FAB con gradiente + sombra del color del tema */
+.btn-primary, .fab{
+  background:linear-gradient(135deg, var(--pri), var(--pri-dark));
+  box-shadow:0 6px 18px color-mix(in srgb, var(--pri) 35%, transparent);
+}
+.list-card.continue{
+  border:1.5px solid color-mix(in srgb, var(--pri) 55%, var(--line));
+  background:color-mix(in srgb, var(--pri) 4%, var(--card));
+}
+
+/* App bar superior: translúcida con blur cuando está fija */
+body.has-nav .topbar{
+  background:color-mix(in srgb, var(--bg) 78%, transparent);
+  backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+  box-shadow:none; border-bottom:1px solid color-mix(in srgb, var(--line) 70%, transparent);
+}
+
+/* Nav inferior flotante tipo píldora con blur */
+.bottomnav{
+  left:12px; right:12px; bottom:calc(10px + env(safe-area-inset-bottom));
+  max-width:496px; margin:0 auto;
+  border:1px solid var(--line); border-top:1px solid var(--line);
+  border-radius:26px;
+  background:color-mix(in srgb, var(--card) 80%, transparent);
+  backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+  box-shadow:0 10px 30px rgba(0,0,0,.14);
+  padding:8px 10px;
+}
+.bottomnav .nv{border-radius:18px; padding:7px 2px}
+.bottomnav .nv.on{background:var(--pri); color:#fff}
+body.has-nav .app{padding-bottom:170px}
+body.has-nav .fab{bottom:calc(96px + env(safe-area-inset-bottom))}
+body.has-nav .toast{bottom:calc(168px + env(safe-area-inset-bottom))}
+
+/* Sheets más suaves */
+.sheet{border-radius:28px 28px 0 0}
+.type-opt, .theme-opt, .field input{border-radius:16px}
+.type-opt.sel{box-shadow:0 0 0 3px color-mix(in srgb, var(--pri) 18%, transparent)}
 </style>
 </head>
 <body>
