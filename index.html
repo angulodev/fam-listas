@@ -345,7 +345,25 @@ function loginView(){
 /* ---------------- Router ---------------- */
 function route(){
   if (channel){ sb.removeChannel(channel); channel = null; }
+  /* Deep link de invitación: #/join/CODIGO */
+  const j = location.hash.match(/^#\/join\/([A-Z0-9]{4,10})/i);
+  if (j){
+    const code = j[1].toUpperCase();
+    history.replaceState(null, '', location.pathname);
+    if (!session){ localStorage.setItem('fam-join', code); return loginView(); }
+    homeView();
+    joinSheet(code);
+    return;
+  }
   if (!session) return loginView();
+  /* Código guardado antes del login con Google */
+  const pend = localStorage.getItem('fam-join');
+  if (pend){
+    localStorage.removeItem('fam-join');
+    homeView();
+    joinSheet(pend);
+    return;
+  }
   const m = location.hash.match(/^#\/list\/([0-9a-f-]+)/i);
   if (m) return listView(m[1]);
   homeView();
@@ -649,15 +667,17 @@ function newListSheet(){
   };
 }
 
-function joinSheet(){
+function joinSheet(prefill = ''){
   const ov = sheet(`
     <h3>Unirme a una lista</h3>
+    ${prefill ? `<p class="msg">Te invitaron a una lista 🎉 Confirma para enviar tu solicitud.</p>` : ''}
     <div class="field"><label>Código de 6 caracteres</label>
-      <input id="fCode" placeholder="ABC123" maxlength="6" autocomplete="off" autocapitalize="characters" style="text-transform:uppercase; letter-spacing:.2em; font-weight:800; text-align:center">
+      <input id="fCode" value="${esc(prefill)}" placeholder="ABC123" maxlength="6" autocomplete="off" autocapitalize="characters" style="text-transform:uppercase; letter-spacing:.2em; font-weight:800; text-align:center">
     </div>
     <button class="btn-primary" id="fJoin">Unirme</button>
     <button class="btn-ghost" data-close>Cancelar</button>`);
-  const inp = ov.querySelector('#fCode'); inp.focus();
+  const inp = ov.querySelector('#fCode');
+  if (prefill) ov.querySelector('#fJoin').focus(); else inp.focus();
   ov.querySelector('#fJoin').onclick = async (e) => {
     const code = inp.value.trim().toUpperCase();
     if (code.length < 6) return inp.focus();
@@ -934,7 +954,7 @@ function shareSheet(list, t){
     <button class="btn-ghost" id="shCopy">Copiar código</button>
     <button class="btn-ghost" data-close>Cerrar</button>`);
   ov.querySelector('#shWa').onclick = () => {
-    const msg = `${t.e} ¡Únete a nuestra lista "${list.name}"!\n\n1. Entra a ${APP_URL}\n2. Inicia sesión con Google\n3. Toca "Unirme" y usa el código: *${list.share_code}*\n\nYo apruebo tu ingreso apenas llegue la solicitud 👍`;
+    const msg = `${t.e} ¡Únete a nuestra lista "${list.name}"!\n\nToca este link y confirma:\n${APP_URL}#/join/${list.share_code}\n\n(Si es tu primera vez, inicia sesión con Google y sigue solo.) Yo apruebo tu ingreso apenas llegue la solicitud 👍`;
     window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
   };
   ov.querySelector('#shCopy').onclick = async () => {
