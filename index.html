@@ -620,12 +620,14 @@ async function homeView(){
   $app.innerHTML = SKEL;
   const me = session.user;
   const iso60 = new Date(Date.now() - 60*86400000).toISOString();
-  const [{ data: lists, error }, { data: items }, { data: myRow }, { data: myMems }, { data: users }] = await Promise.all([
+  const [{ data: lists, error }, { data: items }, { data: myRow }, { data: myMems }, { data: users }, { data: acts }] = await Promise.all([
     sb.from('fam_list').select('*').eq('is_archived', false).order('created_at'),
     sb.from('fam_item').select('id, list_id, content, quantity, is_done, done_at, price, assigned_to, created_by, created_at, done_by, not_found').or(`is_done.eq.false,done_at.gte.${iso60}`),
     sb.from('sys_user').select('first_name, avatar_url').eq('id', me.id).single(),
     sb.from('fam_list_member').select('list_id, status').eq('user_id', me.id),
     sb.from('sys_user').select('id, first_name, display_name, email, avatar_url'),
+    sb.from('fam_activity').select('list_id, item_content, action, actor_id, created_at')
+      .order('created_at', { ascending: false }).limit(10),
   ]);
   if (error){ $app.innerHTML = `<div class="empty">Error cargando listas: ${esc(error.message)}</div>`; return; }
   const statusByList = Object.fromEntries((myMems||[]).map(m => [m.list_id, m.status]));
@@ -663,17 +665,24 @@ async function homeView(){
   const myTasks = all.filter(i => !i.is_done && !i.not_found && i.assigned_to === me.id && listById[i.list_id]).slice(0, 4);
   const nfItems = all.filter(i => !i.is_done && i.not_found && listById[i.list_id]).slice(0, 4);
 
-  /* Actividad reciente */
-  const events = [];
-  all.forEach(i => {
-    const l = listById[i.list_id]; if (!l) return;
-    if (i.created_at && i.created_by)
-      events.push({ ts:i.created_at, who:i.created_by, verb:'agregó', item:i.content, l });
-    if (i.is_done && i.done_at && i.done_by)
-      events.push({ ts:i.done_at, who:i.done_by, verb:(l.list_type==='compras'?'compró':'completó'), item:i.content, l });
-  });
-  events.sort((a,b) => b.ts.localeCompare(a.ts));
-  const feed = events.slice(0, 5);
+  /* Actividad reciente — desde el log real (fam_activity) */
+  const ACT_VERB = {
+    added: 'agregó', undone: 'desmarcó ↩️', not_found: 'no encontró 😕',
+    found: 'repuso a pendiente', deleted: 'eliminó 🗑️', edited: 'editó ✏️',
+  };
+  const feed = (acts || [])
+    .filter(a => listById[a.list_id])
+    .slice(0, 5)
+    .map(a => {
+      const l = listById[a.list_id];
+      return {
+        ts: a.created_at,
+        who: a.actor_id,
+        verb: a.action === 'done' ? (l.list_type === 'compras' ? 'compró' : 'completó') : ACT_VERB[a.action],
+        item: a.item_content,
+        l,
+      };
+    });
 
 
 
