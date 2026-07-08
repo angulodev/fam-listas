@@ -747,7 +747,7 @@ async function homeView(){
     if (!res) return;
     const { error } = await sb.from('fam_item').update({
       is_done: true, done_by: me.id, done_at: new Date().toISOString(),
-      not_found: false, quantity: res.quantity, price: res.price,
+      not_found: false, ...res,
     }).eq('id', i.id);
     if (error) return toast('Error: ' + error.message);
     toast('✓ Listo');
@@ -1175,7 +1175,7 @@ async function listView(id){
       if (done){
         const res = await markDoneSheet(i, doneWord);
         if (!res) return;
-        extra = { quantity: res.quantity, price: res.price };
+        extra = res;
       }
       const { error } = await sb.from('fam_item').update({
         is_done: done,
@@ -1374,21 +1374,35 @@ function markDoneSheet(i, doneWord){
   return new Promise(resolve => {
     let settled = false;
     const cap = doneWord.charAt(0).toUpperCase() + doneWord.slice(1);
+    /* Solo pregunta por cantidad/precio finales si el ítem los traía */
+    const askQty = !!i.quantity;
+    const askPrice = i.price != null && i.price !== '';
+    const wantsDetail = askQty || askPrice;
     const ov = sheet(`
       <h3>¿${cap}?</h3>
-      <p class="msg">"${esc(i.content)}" — ajusta lo final si cambió:</p>
+      <p class="msg">${wantsDetail
+        ? `"${esc(i.content)}" — ajusta lo final si cambió:`
+        : `Marcar "${esc(i.content)}" como ${esc(doneWord)}.`}</p>
+      ${wantsDetail ? `
       <div class="field-row">
-        <div class="field"><label>Cantidad final</label><input id="mkQty" value="${esc(i.quantity || '')}" placeholder="2 un" maxlength="30" autocomplete="off"></div>
-        <div class="field"><label>Precio final (CLP)</label><input id="mkPrice" type="number" inputmode="numeric" min="0" value="${i.price ? Number(i.price) : ''}" placeholder="4990"></div>
-      </div>
+        ${askQty ? `<div class="field"><label>Cantidad final</label><input id="mkQty" value="${esc(i.quantity || '')}" placeholder="2 un" maxlength="30" autocomplete="off"></div>` : ''}
+        ${askPrice ? `<div class="field"><label>Precio final (CLP)</label><input id="mkPrice" type="number" inputmode="numeric" min="0" value="${Number(i.price)}" placeholder="4990"></div>` : ''}
+      </div>` : ''}
       <button class="btn-primary" id="mkOk">Sí, ${doneWord} ✓</button>
       <button class="btn-ghost" data-close>Cancelar</button>`);
     ov.querySelector('#mkOk').onclick = () => {
       settled = true;
-      const q = ov.querySelector('#mkQty').value.trim();
-      const p = parseFloat(ov.querySelector('#mkPrice').value);
+      const out = {};
+      if (askQty){
+        const q = ov.querySelector('#mkQty').value.trim();
+        out.quantity = q || null;
+      }
+      if (askPrice){
+        const p = parseFloat(ov.querySelector('#mkPrice').value);
+        out.price = isNaN(p) ? null : p;
+      }
       ov.remove();
-      resolve({ quantity: q || null, price: isNaN(p) ? null : p });
+      resolve(out);
     };
     const obs = new MutationObserver(() => {
       if (!document.body.contains(ov)){ obs.disconnect(); if (!settled) resolve(null); }
