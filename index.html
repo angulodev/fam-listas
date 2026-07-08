@@ -165,6 +165,7 @@ a{color:var(--pri)}
 .bottomnav .nv span{font-size:1.15rem; line-height:1.2}
 .bottomnav .nv.on{color:var(--pri-dark); background:var(--pri-soft)}
 body.has-nav .app{padding-bottom:150px}
+body.has-nav .topbar{position:sticky; top:0; z-index:35; background:var(--bg); box-shadow:0 3px 10px rgba(0,0,0,.05); margin:0 -16px; padding-left:16px; padding-right:16px}
 body.has-nav .fab{bottom:calc(84px + env(safe-area-inset-bottom))}
 body.has-nav .toast{bottom:calc(150px + env(safe-area-inset-bottom))}
 
@@ -367,12 +368,16 @@ function renderNav(){
     return;
   }
   document.body.classList.add('has-nav');
-  const onHome = !location.hash.startsWith('#/list/');
+  const h = location.hash;
+  const act = h === '#/new' ? 'new'
+    : h.startsWith('#/join') ? 'join'
+    : h === '#/profile' ? 'profile'
+    : (!h || h.startsWith('#/see/')) ? 'home' : '';
   const html = `
-    <button class="nv ${onHome ? 'on' : ''}" data-nv="home"><span>🏠</span>Inicio</button>
-    <button class="nv" data-nv="new"><span>➕</span>Nueva</button>
-    <button class="nv" data-nv="join"><span>🎟️</span>Unirme</button>
-    <button class="nv" data-nv="profile"><span>👤</span>Perfil</button>`;
+    <button class="nv ${act==='home'?'on':''}" data-nv=""><span>🏠</span>Inicio</button>
+    <button class="nv ${act==='new'?'on':''}" data-nv="#/new"><span>➕</span>Nueva</button>
+    <button class="nv ${act==='join'?'on':''}" data-nv="#/join"><span>🎟️</span>Unirme</button>
+    <button class="nv ${act==='profile'?'on':''}" data-nv="#/profile"><span>👤</span>Perfil</button>`;
   let nav = existing;
   if (!nav){
     nav = document.createElement('nav');
@@ -381,45 +386,50 @@ function renderNav(){
     document.body.appendChild(nav);
   }
   nav.innerHTML = html;
-  nav.querySelector('[data-nv="home"]').onclick = () => { if (location.hash) location.hash = ''; else homeView(); };
-  nav.querySelector('[data-nv="new"]').onclick = () => newListSheet();
-  nav.querySelector('[data-nv="join"]').onclick = () => joinSheet();
-  nav.querySelector('[data-nv="profile"]').onclick = openProfile;
-}
-
-async function openProfile(){
-  const { data: myRow } = await sb.from('sys_user')
-    .select('first_name, avatar_url').eq('id', session.user.id).single();
-  const meta = session.user.user_metadata || {};
-  profileSheet(myRow, myRow?.avatar_url || meta.avatar_url || meta.picture);
+  nav.querySelectorAll('[data-nv]').forEach(b => b.onclick = () => {
+    const target = b.dataset.nv;
+    if (location.hash === target) return;
+    if (!target && !location.hash) return homeView();
+    location.hash = target;
+  });
 }
 
 /* ---------------- Router ---------------- */
 function route(){
   if (channel){ sb.removeChannel(channel); channel = null; }
-  renderNav();
-  /* Deep link de invitación: #/join/CODIGO */
-  const j = location.hash.match(/^#\/join\/([A-Z0-9]{4,10})/i);
-  if (j){
-    const code = j[1].toUpperCase();
-    history.replaceState(null, '', location.pathname);
-    if (!session){ localStorage.setItem('fam-join', code); return loginView(); }
-    homeView();
-    joinSheet(code);
-    return;
+  const h = location.hash;
+  const j = h.match(/^#\/join(?:\/([A-Z0-9]{4,10}))?$/i);
+  if (!session){
+    if (j && j[1]) localStorage.setItem('fam-join', j[1].toUpperCase());
+    renderNav();
+    return loginView();
   }
-  if (!session) return loginView();
-  /* Código guardado antes del login con Google */
   const pend = localStorage.getItem('fam-join');
   if (pend){
     localStorage.removeItem('fam-join');
-    homeView();
-    joinSheet(pend);
+    location.hash = '#/join/' + pend;
     return;
   }
-  const m = location.hash.match(/^#\/list\/([0-9a-f-]+)/i);
+  renderNav();
+  const m = h.match(/^#\/list\/([0-9a-f-]+)/i);
   if (m) return listView(m[1]);
+  if (j) return joinView((j[1] || '').toUpperCase());
+  if (h === '#/new') return newListView();
+  if (h === '#/profile') return profileView();
+  const s = h.match(/^#\/see\/(pending|today|week|month)$/);
+  if (s) return seeView(s[1]);
   homeView();
+}
+
+/* Encabezado de página con volver */
+function pageHead(title){
+  return `<div class="topbar">
+    <button class="back-btn" id="pgBack">←</button>
+    <div class="brand" style="font-size:1.15rem">${title}</div>
+  </div>`;
+}
+function wireBack(){
+  document.getElementById('pgBack').onclick = () => { location.hash = ''; };
 }
 
 /* ---------------- Home / Dashboard ---------------- */
@@ -502,10 +512,10 @@ async function homeView(){
     <div class="greet">${greet}, ${esc(myName)} 👋</div>
 
     <div class="stats stats2">
-      <button class="stat" id="statPend"><div class="n acc">${pendTotal}</div><div class="l">Pendientes ›</div></button>
-      <div class="stat"><div class="n">${doneToday}</div><div class="l">${TIPO_HOY} hoy</div></div>
-      <div class="stat"><div class="n">${done7}</div><div class="l">Semana${spend7 ? ` · ${clp(spend7)}` : ''}</div></div>
-      <button class="stat" id="statSpend"><div class="n">${spendMonth ? clp(spendMonth) : '—'}</div><div class="l">Gasto del mes ${spendMonth ? '›' : ''}</div></button>
+      <button class="stat" data-see="pending"><div class="n acc">${pendTotal}</div><div class="l">Pendientes ›</div></button>
+      <button class="stat" data-see="today"><div class="n">${doneToday}</div><div class="l">Listos hoy ›</div></button>
+      <button class="stat" data-see="week"><div class="n">${done7}</div><div class="l">Semana${spend7 ? ` · ${clp(spend7)}` : ''} ›</div></button>
+      <button class="stat" data-see="month"><div class="n">${spendMonth ? clp(spendMonth) : '—'}</div><div class="l">Gasto del mes ›</div></button>
     </div>
 
     ${myTasks.length ? `
@@ -576,56 +586,10 @@ async function homeView(){
     const target = el.dataset.id || el.dataset.goto;
     if (target) location.hash = `#/list/${target}`;
   });
-  document.getElementById('btnNew').onclick = newListSheet;
-  document.getElementById('btnJoin').onclick = () => joinSheet();
-  document.getElementById('btnProfile').onclick = () => profileSheet(myRow, avatar);
-  document.getElementById('statSpend').onclick = () => {
-    const monthItems = all.filter(i => {
-      if (!i.is_done || !i.done_at || !i.price || !listById[i.list_id]) return false;
-      const d = new Date(i.done_at);
-      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-    });
-    if (!monthItems.length) return toast('Sin gastos registrados este mes');
-    const byList = {};
-    monthItems.forEach(i => byList[i.list_id] = (byList[i.list_id] || 0) + Number(i.price));
-    const top = [...monthItems].sort((a,b) => b.price - a.price).slice(0, 5);
-    sheet(`
-      <h3>Gasto del mes · ${clp(spendMonth)}</h3>
-      <div class="section-label" style="margin-top:0">Por lista</div>
-      <div class="detail-rows">
-        ${Object.entries(byList).sort((a,b) => b[1]-a[1]).map(([lid, sum]) =>
-          `<div class="dr"><b>${lEmoji(listById[lid])} ${esc(listById[lid].name)}</b><span>${clp(sum)}</span></div>`).join('')}
-      </div>
-      <div class="section-label">Más caros</div>
-      <div class="detail-rows">
-        ${top.map(i => `<div class="dr"><b>${esc(i.content)}</b><span>${clp(i.price)}</span></div>`).join('')}
-      </div>
-      <button class="btn-ghost" data-close>Cerrar</button>`);
-  };
-  document.getElementById('statPend').onclick = () => {
-    const listById = Object.fromEntries((lists||[]).map(l => [l.id, l]));
-    const pend = all.filter(i => !i.is_done && listById[i.list_id]);
-    if (!pend.length) return toast('Nada pendiente 🎉');
-    const byList = {};
-    pend.forEach(i => (byList[i.list_id] = byList[i.list_id] || []).push(i));
-    const ov = sheet(`
-      <h3>Pendientes (${pend.length})</h3>
-      ${Object.entries(byList).map(([lid, its]) => {
-        const l = listById[lid];
-        const t2 = TYPES[l.list_type] || TYPES.otra;
-        return `
-          <div class="section-label" style="margin-top:8px">${l.icon ? esc(l.icon) : t2.e} ${esc(l.name)}</div>
-          ${its.map(i => `
-            <button class="item" data-goto="${lid}" style="width:100%; text-align:left">
-              <div class="body"><div class="content">${esc(i.content)}</div></div>
-              <span style="color:var(--muted)">›</span>
-            </button>`).join('')}`;
-      }).join('')}
-      <button class="btn-ghost" data-close>Cerrar</button>`);
-    ov.querySelectorAll('[data-goto]').forEach(b => b.onclick = () => {
-      ov.remove(); location.hash = `#/list/${b.dataset.goto}`;
-    });
-  };
+  document.getElementById('btnNew').onclick = () => location.hash = '#/new';
+  document.getElementById('btnJoin').onclick = () => location.hash = '#/join';
+  document.getElementById('btnProfile').onclick = () => location.hash = '#/profile';
+  document.querySelectorAll('[data-see]').forEach(b => b.onclick = () => location.hash = '#/see/' + b.dataset.see);
 
   channel = sb.channel('home')
     .on('postgres_changes', { event:'*', schema:'public', table:'fam_list' }, () => { if(!location.hash.startsWith('#/list/')) homeView(); })
@@ -635,13 +599,18 @@ async function homeView(){
 }
 
 /* ---------------- Perfil ---------------- */
-function profileSheet(myRow, avatar){
+async function profileView(){
+  $app.innerHTML = pageHead('Mi perfil') + `<div class="loader">Cargando…</div>`;
+  wireBack();
   const me = session.user;
+  const { data: myRow } = await sb.from('sys_user').select('first_name, avatar_url').eq('id', me.id).single();
+  const meta = me.user_metadata || {};
+  const avatar = myRow?.avatar_url || meta.avatar_url || meta.picture;
   const cur = localStorage.getItem('fam-theme') || 'verde';
-  const ov = sheet(`
+  $app.innerHTML = pageHead('Mi perfil') + `
     <div class="profile-head">
       <div class="avatar">${avatar ? `<img src="${esc(avatar)}" alt="">` : '👤'}</div>
-      <div><b>Mi perfil</b><div class="em">${esc(me.email)}</div></div>
+      <div><b>${esc(myRow?.first_name || '')}</b><div class="em">${esc(me.email)}</div></div>
     </div>
     <div class="field"><label>Mi nombre (visible para la familia)</label>
       <input id="pName" value="${esc(myRow?.first_name || '')}" maxlength="30" autocomplete="off">
@@ -659,39 +628,95 @@ function profileSheet(myRow, avatar){
       </div>
     </div>
     <button class="btn-primary" id="pSave">Guardar</button>
-    <button class="btn-danger-ghost" id="pLogout">Cerrar sesión</button>`);
-
-  ov.querySelectorAll('.theme-opt').forEach(b => b.onclick = () => {
+    <button class="btn-danger-ghost" id="pLogout">Cerrar sesión</button>`;
+  wireBack();
+  document.querySelectorAll('.theme-opt').forEach(b => b.onclick = () => {
     applyTheme(b.dataset.th);
-    ov.querySelectorAll('.theme-opt').forEach(x => x.classList.toggle('sel', x===b));
+    document.querySelectorAll('.theme-opt').forEach(x => x.classList.toggle('sel', x===b));
   });
-  ov.querySelectorAll('[data-nav]').forEach(b => b.onclick = () => {
+  document.querySelectorAll('[data-nav]').forEach(b => b.onclick = () => {
     localStorage.setItem('fam-nav', b.dataset.nav);
-    ov.querySelectorAll('[data-nav]').forEach(x => x.classList.toggle('sel', x===b));
+    document.querySelectorAll('[data-nav]').forEach(x => x.classList.toggle('sel', x===b));
     renderNav();
   });
-  ov.querySelector('#pSave').onclick = async (e) => {
-    const name = ov.querySelector('#pName').value.trim();
+  document.getElementById('pSave').onclick = async (e) => {
+    const name = document.getElementById('pName').value.trim();
     e.target.disabled = true;
     if (name && name !== (myRow?.first_name || '')){
       const { error } = await sb.from('sys_user').update({ first_name: name }).eq('id', me.id);
       if (error){ e.target.disabled = false; return toast('Error: ' + error.message); }
     }
-    ov.remove(); toast('Perfil guardado ✓');
-    if (!location.hash.startsWith('#/list/')) homeView();
+    toast('Perfil guardado ✓');
+    location.hash = '';
   };
-  ov.querySelector('#pLogout').onclick = async () => {
-    ov.remove();
+  document.getElementById('pLogout').onclick = async () => {
     const ok = await confirmSheet({ title:'Cerrar sesión', message:'Tendrás que volver a entrar con Google la próxima vez.', confirmLabel:'Sí, cerrar sesión', danger:true });
     if (ok) sb.auth.signOut();
   };
 }
 
+/* --- páginas de detalle de las tarjetas del home --- */
+async function seeView(kind){
+  const TITLES = { pending:'Pendientes', today:'Listos hoy', week:'Esta semana', month:'Gasto del mes' };
+  $app.innerHTML = pageHead(TITLES[kind]) + `<div class="loader">Cargando…</div>`;
+  wireBack();
+  const [{ data: lists }, { data: items }, { data: users }] = await Promise.all([
+    sb.from('fam_list').select('*').eq('is_archived', false),
+    sb.from('fam_item').select('list_id, content, quantity, is_done, done_at, done_by, created_at, price, assigned_to, not_found'),
+    sb.from('sys_user').select('id, first_name, display_name, email'),
+  ]);
+  const listById = Object.fromEntries((lists||[]).map(l => [l.id, l]));
+  const userById = Object.fromEntries((users||[]).map(u => [u.id, u]));
+  const lEmoji = l => l.icon ? esc(l.icon) : (TYPES[l.list_type] || TYPES.otra).e;
+  const now = new Date();
+  const sameDay = (a,b) => a.toDateString() === b.toDateString();
+  const week0 = new Date(now); week0.setDate(now.getDate() - 6); week0.setHours(0,0,0,0);
+
+  const match = i => {
+    if (!listById[i.list_id]) return false;
+    if (kind === 'pending') return !i.is_done;
+    if (!i.is_done || !i.done_at) return false;
+    const d = new Date(i.done_at);
+    if (kind === 'today') return sameDay(d, now);
+    if (kind === 'week') return d >= week0;
+    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  };
+  const rows = (items||[]).filter(match)
+    .sort((a,b) => ((b.done_at||b.created_at||'')).localeCompare(a.done_at||a.created_at||''));
+  const total = rows.reduce((s,i) => s + (Number(i.price)||0), 0);
+  const byList = {};
+  rows.forEach(i => (byList[i.list_id] = byList[i.list_id] || []).push(i));
+
+  $app.innerHTML = pageHead(TITLES[kind]) + `
+    <div class="chip-row">
+      <span class="chip">${rows.length} ítem${rows.length!==1?'s':''}</span>
+      ${total ? `<span class="chip orange">💰 ${clp(total)}</span>` : ''}
+    </div>
+    ${!rows.length ? `<div class="empty"><div class="big">${kind==='pending'?'🎉':'🌙'}</div>${kind==='pending'?'Nada pendiente. ¡Todo al día!':'Sin movimientos en este período.'}</div>`
+      : Object.entries(byList).map(([lid, its]) => {
+        const l = listById[lid];
+        return `
+          <div class="section-label">${lEmoji(l)} ${esc(l.name)}</div>
+          ${its.map(i => `
+            <button class="mini-item" data-goto="${lid}">
+              <span class="mt">${esc(i.content)}${i.quantity?` <span class="qty" style="font-weight:600">· ${esc(i.quantity)}</span>`:''}
+                <small>${i.is_done && i.done_by && userById[i.done_by]
+                  ? `✓ ${esc(firstName(userById[i.done_by]))} · ${fmtWhen(i.done_at)}`
+                  : (i.not_found ? '😕 No se encontró'
+                    : (i.assigned_to && userById[i.assigned_to] ? `🙋 Le toca a ${esc(firstName(userById[i.assigned_to]))}` : 'Pendiente'))}</small>
+              </span>
+              ${i.price ? `<span class="price-tag">${clp(i.price)}</span>` : ''}
+              <span class="arr">›</span>
+            </button>`).join('')}`;
+      }).join('')}`;
+  wireBack();
+  document.querySelectorAll('[data-goto]').forEach(b => b.onclick = () => location.hash = `#/list/${b.dataset.goto}`);
+}
+
 /* ---------------- Crear / unirse ---------------- */
-function newListSheet(){
+function newListView(){
   let type = 'compras';
-  const ov = sheet(`
-    <h3>Nueva lista</h3>
+  $app.innerHTML = pageHead('Nueva lista') + `
     <div class="field"><label>Nombre</label><input id="fName" placeholder="Ej: Supermercado" maxlength="60" autocomplete="off"></div>
     <div class="field"><label>Tipo</label>
       <div class="type-grid">${Object.entries(TYPES).map(([k,t]) =>
@@ -704,46 +729,44 @@ function newListSheet(){
         <div class="field"><label>Emoji</label><input id="fEmoji" placeholder="🎁" maxlength="4" autocomplete="off" style="text-align:center; font-size:1.2rem"></div>
       </div>
     </div>
-    <button class="btn-primary" id="fCreate">Crear lista</button>
-    <button class="btn-ghost" data-close>Cancelar</button>`);
-  ov.querySelectorAll('.type-opt').forEach(b => b.onclick = () => {
+    <button class="btn-primary" id="fCreate">Crear lista</button>`;
+  wireBack();
+  document.querySelectorAll('.type-opt').forEach(b => b.onclick = () => {
     type = b.dataset.t;
-    ov.querySelectorAll('.type-opt').forEach(x => x.classList.toggle('sel', x===b));
-    ov.querySelector('#fOtraWrap').style.display = type === 'otra' ? '' : 'none';
+    document.querySelectorAll('.type-opt').forEach(x => x.classList.toggle('sel', x===b));
+    document.getElementById('fOtraWrap').style.display = type === 'otra' ? '' : 'none';
   });
-  const inp = ov.querySelector('#fName'); inp.focus();
-  ov.querySelector('#fCreate').onclick = async (e) => {
+  const inp = document.getElementById('fName');
+  document.getElementById('fCreate').onclick = async (e) => {
     const name = inp.value.trim();
     if (!name) return inp.focus();
-    if (type === 'otra' && !ov.querySelector('#fCustom').value.trim())
-      return ov.querySelector('#fCustom').focus();
+    if (type === 'otra' && !document.getElementById('fCustom').value.trim())
+      return document.getElementById('fCustom').focus();
     e.target.disabled = true;
     const { data, error } = await sb.from('fam_list')
       .insert({
         name, list_type: type, created_by: session.user.id,
-        custom_type: type === 'otra' ? ov.querySelector('#fCustom').value.trim() : null,
-        icon: type === 'otra' ? (ov.querySelector('#fEmoji').value.trim() || null) : null,
+        custom_type: type === 'otra' ? document.getElementById('fCustom').value.trim() : null,
+        icon: type === 'otra' ? (document.getElementById('fEmoji').value.trim() || null) : null,
       })
       .select().single();
     if (error){ e.target.disabled = false; return toast('Error: ' + error.message); }
-    ov.remove();
     location.hash = `#/list/${data.id}`;
   };
 }
 
-function joinSheet(prefill = ''){
+function joinView(prefill = ''){
   if (typeof prefill !== 'string') prefill = '';
-  const ov = sheet(`
-    <h3>Unirme a una lista</h3>
-    ${prefill ? `<p class="msg">Te invitaron a una lista 🎉 Confirma para enviar tu solicitud.</p>` : ''}
+  $app.innerHTML = pageHead('Unirme a una lista') + `
+    ${prefill ? `<p style="color:var(--muted); margin:0 4px 16px">Te invitaron a una lista 🎉 Confirma para enviar tu solicitud.</p>` : ''}
     <div class="field"><label>Código de 6 caracteres</label>
       <input id="fCode" value="${esc(prefill)}" placeholder="ABC123" maxlength="6" autocomplete="off" autocapitalize="characters" style="text-transform:uppercase; letter-spacing:.2em; font-weight:800; text-align:center">
     </div>
-    <button class="btn-primary" id="fJoin">Unirme</button>
-    <button class="btn-ghost" data-close>Cancelar</button>`);
-  const inp = ov.querySelector('#fCode');
-  if (prefill) ov.querySelector('#fJoin').focus(); else inp.focus();
-  ov.querySelector('#fJoin').onclick = async (e) => {
+    <button class="btn-primary" id="fJoin">Unirme</button>`;
+  wireBack();
+  const inp = document.getElementById('fCode');
+  if (prefill) document.getElementById('fJoin').focus(); else inp.focus();
+  document.getElementById('fJoin').onclick = async (e) => {
     const code = inp.value.trim().toUpperCase();
     if (code.length < 6) return inp.focus();
     e.target.disabled = true;
@@ -751,10 +774,10 @@ function joinSheet(prefill = ''){
     if (error){ e.target.disabled = false; return toast(error.message.includes('inválido') ? 'Código inválido 😕' : 'Error: '+error.message); }
     const { data: mem } = await sb.from('fam_list_member').select('status')
       .eq('list_id', data).eq('user_id', session.user.id).single();
-    ov.remove();
     if (mem?.status === 'pending'){
       toast('Solicitud enviada · espera aprobación 🙌');
-      homeView();
+      location.hash = '';
+      route();
     } else {
       toast('¡Ya eres parte de la lista! 🎉');
       location.hash = `#/list/${data}`;
