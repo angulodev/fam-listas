@@ -131,9 +131,13 @@ a{color:var(--pri)}
 .item{display:flex; align-items:center; gap:11px; background:var(--card); border-radius:14px;
   padding:11px 13px; margin-bottom:8px; box-shadow:var(--shadow); animation:pop .18s ease}
 @keyframes pop{from{opacity:0; transform:translateY(4px)} to{opacity:1; transform:none}}
-.checkbox{width:26px; height:26px; border-radius:9px; border:2.5px solid var(--pri); flex-shrink:0;
-  display:grid; place-items:center; color:#fff; font-size:.95rem; transition:background .15s ease}
-.item.done .checkbox{background:var(--pri); border-color:var(--pri)}
+.item .status{width:24px; height:24px; border-radius:50%; flex-shrink:0; display:grid; place-items:center;
+  font-size:.8rem; font-weight:800; background:var(--line); color:transparent}
+.item .status.ok{background:var(--pri); color:#fff}
+.item .status.nf{background:var(--acc-soft); color:var(--acc); filter:saturate(1.4) brightness(.85)}
+.who.nf-txt{color:var(--acc); filter:saturate(1.4) brightness(.8); font-weight:700}
+.stats2{grid-template-columns:1fr 1fr}
+.stats2 .stat .n{font-size:1.2rem}
 .item .thumb{width:40px; height:40px; border-radius:10px; object-fit:cover; flex-shrink:0; background:var(--line)}
 .item .body{flex:1; min-width:0}
 .item .content{font-weight:700; transition:color .2s}
@@ -385,8 +389,8 @@ async function homeView(){
     }
   });
   const pendTotal = all.filter(i => !i.is_done).length;
-  const maxDay = Math.max(1, ...Object.values(doneByDay));
-  const DL = ['D','L','M','X','J','V','S'];
+  const doneToday = doneByDay[dayKey(now)] || 0;
+  const TIPO_HOY = 'Listos';
   const listById = Object.fromEntries((lists||[]).map(l => [l.id, l]));
   const lEmoji = l => l.icon ? esc(l.icon) : (TYPES[l.list_type] || TYPES.otra).e;
 
@@ -426,9 +430,10 @@ async function homeView(){
     </div>
     <div class="greet">${greet}, ${esc(myName)} 👋</div>
 
-    <div class="stats">
+    <div class="stats stats2">
       <button class="stat" id="statPend"><div class="n acc">${pendTotal}</div><div class="l">Pendientes ›</div></button>
-      <div class="stat"><div class="n">${done7}</div><div class="l">Listos · 7d</div></div>
+      <div class="stat"><div class="n">${doneToday}</div><div class="l">${TIPO_HOY} hoy</div></div>
+      <div class="stat"><div class="n">${done7}</div><div class="l">Semana${spend7 ? ` · ${clp(spend7)}` : ''}</div></div>
       <button class="stat" id="statSpend"><div class="n">${spendMonth ? clp(spendMonth) : '—'}</div><div class="l">Gasto del mes ${spendMonth ? '›' : ''}</div></button>
     </div>
 
@@ -441,21 +446,6 @@ async function homeView(){
         <span class="arr">›</span>
       </button>`).join('')}` : ''}
 
-    <div class="chart-card">
-      <div class="title">Actividad · últimos 7 días</div>
-      <div class="chart">
-        ${last7.map(d => {
-          const v = doneByDay[dayKey(d)];
-          const h = Math.round((v / maxDay) * 52) + 4;
-          return `<div class="col">
-            <div class="bar ${v?'hit':''}" style="height:${h}px">${v?`<span class="v">${v}</span>`:''}</div>
-            <div class="d">${DL[d.getDay()]}</div>
-          </div>`;
-        }).join('')}
-      </div>
-      ${done7 ? `<div class="wk">Esta semana: ${done7} listo${done7>1?'s':''}${spend7 ? ` · ${clp(spend7)}` : ''} 💪</div>` : ''}
-    </div>
-
     ${activeL ? `
     <button class="list-card continue" data-id="${activeL.id}">
       <div class="emoji">${lEmoji(activeL)}</div>
@@ -465,19 +455,6 @@ async function homeView(){
       </div>
       <div class="count">${activeP}</div>
     </button>` : ''}
-
-    ${feed.length ? `
-    <div class="section-label">Actividad reciente</div>
-    <div class="feed">
-      ${feed.map(ev => {
-        const u = userById[ev.who];
-        return `<div class="f">
-          <div class="avatar" style="width:26px;height:26px;font-size:.65rem">${u?.avatar_url ? `<img src="${esc(u.avatar_url)}" alt="">` : esc(initial(u))}</div>
-          <span><b>${esc(firstName(u))}</b> ${ev.verb} ${esc(ev.item)} <span style="color:var(--muted)">· ${lEmoji(ev.l)}</span></span>
-          <span class="tm">${fmtWhen(ev.ts)}</span>
-        </div>`;
-      }).join('')}
-    </div>` : ''}
 
     <div class="section-label">Nuestras listas</div>
     <div id="lists">
@@ -509,7 +486,20 @@ async function homeView(){
     <div class="home-actions">
       <button class="action-tile" id="btnNew"><span class="ico">➕</span>Nueva lista<small>Compras, tareas…</small></button>
       <button class="action-tile" id="btnJoin"><span class="ico">🎟️</span>Unirme<small>Con un código</small></button>
-    </div>`;
+    </div>
+
+    ${feed.length ? `
+    <div class="section-label">Historial reciente</div>
+    <div class="feed">
+      ${feed.map(ev => {
+        const u = userById[ev.who];
+        return `<div class="f">
+          <div class="avatar" style="width:26px;height:26px;font-size:.65rem">${u?.avatar_url ? `<img src="${esc(u.avatar_url)}" alt="">` : esc(initial(u))}</div>
+          <span><b>${esc(firstName(u))}</b> ${ev.verb} ${esc(ev.item)} <span style="color:var(--muted)">· ${lEmoji(ev.l)}</span></span>
+          <span class="tm">${fmtWhen(ev.ts)}</span>
+        </div>`;
+      }).join('')}
+    </div>` : ''}`;
 
   document.querySelectorAll('.list-card, .mini-item').forEach(el => el.onclick = () => {
     const target = el.dataset.id || el.dataset.goto;
@@ -842,14 +832,16 @@ async function listView(id){
 
     const renderItem = i => `
       <div class="item ${i.is_done?'done':''}" data-id="${i.id}">
-        <button class="checkbox" data-check aria-label="${i.is_done?'Desmarcar':'Marcar'}">${i.is_done?'✓':''}</button>
+        <span class="status ${i.is_done?'ok':(i.not_found?'nf':'')}">${i.is_done?'✓':(i.not_found?'!':'')}</span>
         ${i.photo_url ? `<img class="thumb" src="${esc(i.photo_url)}" alt="" loading="lazy" data-open>` : ''}
         <div class="body" data-open>
           <div class="content">${esc(i.content)}${i.quantity?` <span class="qty">· ${esc(i.quantity)}</span>`:''}${i.price?`<span class="price-tag">${clp(i.price)}</span>`:''}</div>
           ${i.is_done && i.done_by && userById[i.done_by]
             ? `<div class="who">✓ ${esc(firstName(userById[i.done_by]))} · ${fmtWhen(i.done_at)}</div>`
-            : (!i.is_done && i.assigned_to && userById[i.assigned_to]
-              ? `<div class="who">🙋 Le toca a ${esc(firstName(userById[i.assigned_to]))}</div>` : '')}
+            : (i.not_found
+              ? `<div class="who nf-txt">😕 No se encontró — sigue pendiente</div>`
+              : (i.assigned_to && userById[i.assigned_to]
+                ? `<div class="who">🙋 Le toca a ${esc(firstName(userById[i.assigned_to]))}</div>` : ''))}
         </div>
         ${i.link ? `<a class="linkico" href="${esc(i.link)}" target="_blank" rel="noopener" title="Abrir link">🔗</a>` : ''}
         ${canEdit?`<button class="del" data-del aria-label="Eliminar">✕</button>`:''}
@@ -882,21 +874,24 @@ async function listView(id){
         is_done: done,
         done_by: done ? session.user.id : null,
         done_at: done ? new Date().toISOString() : null,
+        not_found: false,
       }).eq('id', i.id);
       if (error) return toast('Error: '+error.message);
+      loadItems();
+    };
+
+    const notFoundItem = async (i) => {
+      const { error } = await sb.from('fam_item').update({ not_found: !i.not_found }).eq('id', i.id);
+      if (error) return toast('Error: '+error.message);
+      toast(i.not_found ? 'Marcado como pendiente normal' : 'Marcado: no se encontró 😕');
       loadItems();
     };
 
     $items.querySelectorAll('[data-open]').forEach(el => el.onclick = () => {
       const i = itemById[el.closest('.item').dataset.id];
       if (i) itemDetailSheet(i, userById, canEdit
-        ? { listId: id, members: approvedMembers, doneWord, onToggle: toggleItem }
+        ? { listId: id, members: approvedMembers, doneWord, onToggle: toggleItem, onNotFound: notFoundItem }
         : null);
-    });
-    $items.querySelectorAll('[data-check]').forEach(b => b.onclick = () => {
-      if (!canEdit) return toast('Solo lectura en esta lista');
-      const i = itemById[b.closest('.item').dataset.id];
-      toggleItem(i);
     });
     $items.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
       const i = itemById[b.closest('.item').dataset.id];
@@ -957,8 +952,8 @@ function itemFormSheet({ listId, members = [], item = null, prefill = '' }){
     <h3>${isEdit ? 'Editar ítem' : 'Agregar con detalle'}</h3>
     <div class="field"><label>¿Qué?</label><input id="dContent" value="${esc(item?.content || prefill)}" placeholder="Ej: Arena para gatos" maxlength="120" autocomplete="off"></div>
     <div class="field-row">
-      <div class="field"><label>Cantidad</label><input id="dQty" value="${esc(item?.quantity || '')}" placeholder="2 kg" maxlength="30" autocomplete="off"></div>
-      <div class="field"><label>Precio (CLP)</label><input id="dPrice" type="number" inputmode="numeric" min="0" value="${item?.price ? Number(item.price) : ''}" placeholder="4990"></div>
+      <div class="field"><label>Cantidad (opcional)</label><input id="dQty" value="${esc(item?.quantity || '')}" placeholder="2 un · 500 g · 1 caja" maxlength="30" autocomplete="off"></div>
+      <div class="field"><label>Precio (opcional)</label><input id="dPrice" type="number" inputmode="numeric" min="0" value="${item?.price ? Number(item.price) : ''}" placeholder="4990"></div>
     </div>
     ${members.length > 1 ? `
     <div class="field"><label>¿A quién le toca?</label>
@@ -969,7 +964,7 @@ function itemFormSheet({ listId, members = [], item = null, prefill = '' }){
         </button>`).join('')}
       </div>
     </div>` : ''}
-    <div class="field"><label>Link del producto</label><input id="dLink" type="url" value="${esc(item?.link || '')}" placeholder="https://…" autocomplete="off"></div>
+    <div class="field"><label>Link del producto (opcional)</label><input id="dLink" type="url" value="${esc(item?.link || '')}" placeholder="https://…" autocomplete="off"></div>
     <div class="field"><label>Foto</label>
       <div class="photo-drop">
         <img id="dPreview" src="${esc(item?.photo_url || '')}" style="${item?.photo_url ? '' : 'display:none'}" alt="">
@@ -1045,6 +1040,7 @@ function itemDetailSheet(i, userById, ctx = null){
     ${ctx ? (i.is_done
       ? `<button class="btn-ghost" id="dtToggle">↩️ Desmarcar</button>`
       : `<button class="btn-primary" id="dtToggle">✓ Marcar como ${esc(ctx.doneWord)}</button>`) : ''}
+    ${ctx && !i.is_done ? `<button class="btn-ghost" id="dtNf">${i.not_found ? '↩️ Sí se encontró (volver a pendiente normal)' : '🚫 No se encontró'}</button>` : ''}
     ${i.link ? `<a class="${ctx && !i.is_done ? 'btn-ghost' : 'btn-primary'}" style="display:block; text-align:center; text-decoration:none" href="${esc(i.link)}" target="_blank" rel="noopener">Abrir link del producto 🔗</a>` : ''}
     ${ctx ? `<button class="btn-ghost" id="dtEdit" style="color:var(--pri-dark)">✏️ Editar ítem</button>` : ''}
     <button class="btn-ghost" data-close>Cerrar</button>`);
@@ -1053,6 +1049,10 @@ function itemDetailSheet(i, userById, ctx = null){
       ov.remove();
       ctx.onToggle(i);
     };
+    ov.querySelector('#dtNf')?.addEventListener('click', () => {
+      ov.remove();
+      ctx.onNotFound(i);
+    });
     ov.querySelector('#dtEdit').onclick = () => {
       ov.remove();
       itemFormSheet({ listId: ctx.listId, members: ctx.members, item: i });
