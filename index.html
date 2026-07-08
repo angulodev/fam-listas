@@ -524,7 +524,7 @@ async function homeView(){
     if (target) location.hash = `#/list/${target}`;
   });
   document.getElementById('btnNew').onclick = newListSheet;
-  document.getElementById('btnJoin').onclick = joinSheet;
+  document.getElementById('btnJoin').onclick = () => joinSheet();
   document.getElementById('btnProfile').onclick = () => profileSheet(myRow, avatar);
   document.getElementById('statSpend').onclick = () => {
     const monthItems = all.filter(i => {
@@ -668,6 +668,7 @@ function newListSheet(){
 }
 
 function joinSheet(prefill = ''){
+  if (typeof prefill !== 'string') prefill = '';
   const ov = sheet(`
     <h3>Unirme a una lista</h3>
     ${prefill ? `<p class="msg">Te invitaron a una lista 🎉 Confirma para enviar tu solicitud.</p>` : ''}
