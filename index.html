@@ -372,6 +372,14 @@ body.has-nav .toast{bottom:calc(168px + env(safe-area-inset-bottom))}
 .tp-row .c{flex:1; font-weight:800; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
 .tp-row .ln{font-size:.74rem; color:var(--muted); font-weight:700; white-space:nowrap}
 .tp-row .arr{color:var(--muted)}
+.tp-row{cursor:pointer}
+.tpc{
+  width:26px; height:26px; border-radius:9px; border:2.5px solid var(--pri); flex-shrink:0;
+  background:var(--card); display:grid; place-items:center;
+}
+.tpc:active{background:var(--pri-soft)}
+.list-card.ext .meta{color:var(--pri-dark)}
+.list-card .mng{font-size:1.05rem; padding:6px; flex-shrink:0; filter:grayscale(.3)}
 
 /* Sheets más suaves */
 .sheet{border-radius:28px 28px 0 0}
@@ -888,12 +896,17 @@ function newListView(){
         <div class="field"><label>Emoji</label><input id="fEmoji" placeholder="🎁" maxlength="4" autocomplete="off" style="text-align:center; font-size:1.2rem"></div>
       </div>
     </div>
+    <div id="fExtWrap" style="display:none">
+      <div class="field"><label>URL del carrito</label><input id="fExtUrl" type="url" placeholder="https://articulo.mercadolibre.cl/… o https://shein.com/cart" autocomplete="off"></div>
+      <div class="field"><label>Emoji (opcional)</label><input id="fExtEmoji" placeholder="🛍️" maxlength="4" autocomplete="off" style="text-align:center; font-size:1.2rem"></div>
+    </div>
     <button class="btn-primary" id="fCreate">Crear lista</button>`;
   wireBack();
   document.querySelectorAll('.type-opt').forEach(b => b.onclick = () => {
     type = b.dataset.t;
     document.querySelectorAll('.type-opt').forEach(x => x.classList.toggle('sel', x===b));
     document.getElementById('fOtraWrap').style.display = type === 'otra' ? '' : 'none';
+    document.getElementById('fExtWrap').style.display = type === 'externa' ? '' : 'none';
   });
   const inp = document.getElementById('fName');
   document.getElementById('fCreate').onclick = async (e) => {
@@ -901,12 +914,16 @@ function newListView(){
     if (!name) return inp.focus();
     if (type === 'otra' && !document.getElementById('fCustom').value.trim())
       return document.getElementById('fCustom').focus();
+    if (type === 'externa' && !document.getElementById('fExtUrl').value.trim())
+      return document.getElementById('fExtUrl').focus();
     e.target.disabled = true;
     const { data, error } = await sb.from('fam_list')
       .insert({
         name, list_type: type, created_by: session.user.id,
         custom_type: type === 'otra' ? document.getElementById('fCustom').value.trim() : null,
-        icon: type === 'otra' ? (document.getElementById('fEmoji').value.trim() || null) : null,
+        icon: type === 'otra' ? (document.getElementById('fEmoji').value.trim() || null)
+            : type === 'externa' ? (document.getElementById('fExtEmoji').value.trim() || null) : null,
+        external_url: type === 'externa' ? document.getElementById('fExtUrl').value.trim() : null,
       })
       .select().single();
     if (error){ e.target.disabled = false; return toast('Error: ' + error.message); }
@@ -1022,7 +1039,7 @@ async function listView(id){
     <div class="members members-line" id="membersRow"></div>
     <div id="requests"></div>
     <div id="items"></div>
-    ${canEdit ? `
+    ${canEdit && list.list_type !== 'externa' ? `
     <button class="fab" id="btnAdd" title="Agregar ítem">＋</button>` : ''}
   `;
 
@@ -1074,6 +1091,25 @@ async function listView(id){
   }
 
   document.getElementById('btnSettings').addEventListener('click', () => settingsSheet(list, myRole));
+
+  /* --- lista externa: botón para abrir el carrito, sin ítems --- */
+  if (list.list_type === 'externa'){
+    const $items = document.getElementById('items');
+    document.getElementById('chipPending').textContent = '🔗 Carrito externo';
+    $items.innerHTML = `
+      <a class="btn-primary" style="display:block; text-align:center; text-decoration:none; margin-top:14px"
+         href="${esc(list.external_url || '#')}" target="_blank" rel="noopener">🛒 Abrir carrito en la tienda</a>
+      ${list.external_url ? `<p style="color:var(--muted); font-size:.78rem; text-align:center; word-break:break-all; margin-top:10px">${esc(list.external_url)}</p>` : `<div class="empty" style="margin-top:12px">Sin URL configurada — agrégala en ⚙️</div>`}`;
+    channel = sb.channel('list-'+id)
+      .on('postgres_changes', { event:'*', schema:'public', table:'fam_list_member', filter:`list_id=eq.${id}` }, () => {
+        if (location.hash.includes(id)) listView(id);
+      })
+      .on('postgres_changes', { event:'*', schema:'public', table:'fam_list', filter:`id=eq.${id}` }, () => {
+        if (location.hash.includes(id)) listView(id);
+      })
+      .subscribe();
+    return;
+  }
 
   /* --- ítems --- */
   const $items = document.getElementById('items');
@@ -1180,7 +1216,7 @@ async function listView(id){
   }
   await loadItems();
 
-  if (canEdit){
+  if (canEdit && document.getElementById('btnAdd')){
     document.getElementById('btnAdd').onclick = () =>
       itemFormSheet({ listId: id, members: approvedMembers });
   }
@@ -1416,6 +1452,9 @@ function settingsSheet(list, myRole = 'owner'){
         <div class="field"><label>Emoji</label><input id="sEmoji" value="${esc(list.icon||'')}" placeholder="🎁" maxlength="4" autocomplete="off" style="text-align:center; font-size:1.2rem"></div>
       </div>
     </div>
+    <div id="sExtWrap" style="display:${type==='externa'?'':'none'}">
+      <div class="field"><label>URL del carrito</label><input id="sExtUrl" type="url" value="${esc(list.external_url||'')}" placeholder="https://…" autocomplete="off"></div>
+    </div>
     <button class="btn-primary" id="sSave">Guardar cambios</button>
     <button class="btn-danger-ghost" id="sArchive">Archivar lista</button>
     <button class="btn-danger-ghost" id="sDelete">Eliminar lista</button>
@@ -1424,6 +1463,7 @@ function settingsSheet(list, myRole = 'owner'){
     type = b.dataset.t;
     ov.querySelectorAll('.type-opt').forEach(x => x.classList.toggle('sel', x===b));
     ov.querySelector('#sOtraWrap').style.display = type === 'otra' ? '' : 'none';
+    ov.querySelector('#sExtWrap').style.display = type === 'externa' ? '' : 'none';
   });
   ov.querySelector('#sSave').onclick = async (e) => {
     const name = ov.querySelector('#sName').value.trim();
@@ -1434,7 +1474,9 @@ function settingsSheet(list, myRole = 'owner'){
     const { error } = await sb.from('fam_list').update({
       name, list_type: type,
       custom_type: type === 'otra' ? ov.querySelector('#sCustom').value.trim() : null,
-      icon: type === 'otra' ? (ov.querySelector('#sEmoji').value.trim() || null) : null,
+      icon: type === 'otra' ? (ov.querySelector('#sEmoji').value.trim() || null)
+          : type === 'externa' ? list.icon : null,
+      external_url: type === 'externa' ? (ov.querySelector('#sExtUrl').value.trim() || null) : null,
     }).eq('id', list.id);
     if (error){ e.target.disabled = false; return toast('Error: ' + error.message); }
     ov.remove(); toast('Lista actualizada ✓');
