@@ -412,6 +412,52 @@ body.has-nav .toast{bottom:calc(168px + env(safe-area-inset-bottom))}
   outline-offset:2px; border-radius:10px;
 }
 
+/* ============================================================
+   LOOK v3.8 — inspirado en UI kit: tiles pastel, cards flotantes,
+   jerarquía tipográfica amable. Convive con los 8 temas.
+   ============================================================ */
+:root{--radius:24px}
+.list-card, .item, .mini-item, .feed, .stat, .action-tile, .todo-panel{
+  border:none;
+  box-shadow:0 6px 22px color-mix(in srgb, var(--ink) 7%, transparent);
+}
+.list-card{padding:18px 16px; gap:14px}
+.list-card .emoji{width:50px; height:50px; border-radius:16px; font-size:1.45rem}
+.greet small{display:block; font-family:'Nunito'; font-weight:700; font-size:.86rem; color:var(--muted); margin-top:3px}
+.section-label{
+  text-transform:none; letter-spacing:0;
+  font-family:'Fredoka'; font-weight:600; font-size:1.06rem; color:var(--ink);
+  margin:32px 4px 12px;
+}
+.todo-panel .tp-head{font-size:1.06rem}
+
+/* Tiles pastel por tipo (firma del kit, adaptada a claro/oscuro) */
+.emoji.t-compras   {background:color-mix(in srgb, #10B981 16%, var(--card))}
+.emoji.t-tareas    {background:color-mix(in srgb, #F97316 16%, var(--card))}
+.emoji.t-pendientes{background:color-mix(in srgb, #8B5CF6 16%, var(--card))}
+.emoji.t-otra      {background:color-mix(in srgb, #EC4899 14%, var(--card))}
+.emoji.t-externa   {background:color-mix(in srgb, #3B82F6 16%, var(--card))}
+
+/* Stats: cada tile con su pastel y número a color */
+.stat.st-a{background:color-mix(in srgb, #F97316 13%, var(--card))}
+.stat.st-a .n{color:#EA6A0C}
+.stat.st-b{background:color-mix(in srgb, #10B981 13%, var(--card))}
+.stat.st-b .n{color:#0B9E6E}
+.stat.st-c{background:color-mix(in srgb, #8B5CF6 12%, var(--card))}
+.stat.st-c .n{color:#7C4DE8}
+.stat.st-d{background:color-mix(in srgb, #EAB308 14%, var(--card))}
+.stat.st-d .n{color:#B78905}
+[data-theme="oscuro"] .stat.st-a .n{color:#FFA35C}
+[data-theme="oscuro"] .stat.st-b .n{color:#4ADFA8}
+[data-theme="oscuro"] .stat.st-c .n{color:#B79AFF}
+[data-theme="oscuro"] .stat.st-d .n{color:#F2CB4E}
+.stat .l{color:var(--muted)}
+
+/* Botones más presentes */
+.btn-primary{padding:16px; font-size:1.02rem}
+.action-tile{padding:16px}
+.bottomnav .nv span{font-size:1.25rem}
+
 /* Sheets más suaves */
 .sheet{border-radius:28px 28px 0 0}
 .type-opt, .theme-opt, .field input{border-radius:16px}
@@ -697,13 +743,13 @@ async function homeView(){
       <div class="brand">Listas <span>·</span> Familia</div>
       <button class="avatar" id="btnProfile" title="Mi perfil">${avatar ? `<img src="${esc(avatar)}" alt="">` : esc(myName.charAt(0).toUpperCase())}</button>
     </div>
-    <div class="greet">${greet}, ${esc(myName)} 👋</div>
+    <div class="greet">${greet}, ${esc(myName)} 👋<small>¿Qué necesita la familia hoy?</small></div>
 
     <div class="stats stats2">
-      <button class="stat" data-see="pending"><div class="n acc">${pendTotal}</div><div class="l">Pendientes ›</div></button>
-      <button class="stat" data-see="today"><div class="n">${doneToday}</div><div class="l">Listos hoy ›</div></button>
-      <button class="stat" data-see="week"><div class="n">${done7}</div><div class="l">Semana${spend7 ? ` · ${clp(spend7)}` : ''} ›</div></button>
-      <button class="stat" data-see="month"><div class="n">${spendMonth ? clp(spendMonth) : '—'}</div><div class="l">Gasto del mes ›</div></button>
+      <button class="stat st-a" data-see="pending"><div class="n">${pendTotal}</div><div class="l">Pendientes ›</div></button>
+      <button class="stat st-b" data-see="today"><div class="n">${doneToday}</div><div class="l">Listos hoy ›</div></button>
+      <button class="stat st-c" data-see="week"><div class="n">${done7}</div><div class="l">Semana${spend7 ? ` · ${clp(spend7)}` : ''} ›</div></button>
+      <button class="stat st-d" data-see="month"><div class="n">${spendMonth ? clp(spendMonth) : '—'}</div><div class="l">Gasto del mes ›</div></button>
     </div>
 
     ${myTasks.length ? `
@@ -749,7 +795,7 @@ async function homeView(){
         }
         if (l.list_type === 'externa'){
           return `<div class="list-card ext" data-ext="${esc(l.external_url || '')}">
-            <div class="emoji">${esc(l.icon) || '🛍️'}</div>
+            <div class="emoji t-externa">${esc(l.icon) || '🛍️'}</div>
             <div class="info">
               <div class="name">${esc(l.name)}</div>
               <div class="meta">Carrito externo · toca para abrir 🔗</div>
@@ -761,7 +807,7 @@ async function homeView(){
         const p = s.total - s.done;
         const pct = s.total ? Math.round(s.done / s.total * 100) : 0;
         return `<button class="list-card" data-id="${l.id}">
-          <div class="emoji">${esc(l.icon) || t.e}</div>
+          <div class="emoji t-${l.list_type}">${esc(l.icon) || t.e}</div>
           <div class="info">
             <div class="name">${esc(l.name)}</div>
             <div class="progress"><i style="width:${pct}%"></i></div>
