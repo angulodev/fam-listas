@@ -458,15 +458,6 @@ body.has-nav .toast{bottom:calc(168px + env(safe-area-inset-bottom))}
 .action-tile{padding:16px}
 .bottomnav .nv span{font-size:1.25rem}
 
-/* Búsqueda (kit-style) */
-.searchbar{
-  display:flex; align-items:center; gap:10px;
-  background:var(--card); border-radius:999px; padding:13px 18px; margin:-6px 0 6px;
-  box-shadow:0 6px 22px color-mix(in srgb, var(--ink) 7%, transparent);
-  color:var(--muted);
-}
-.searchbar input{flex:1; border:none; outline:none; background:none; min-width:0}
-
 /* Footer de card de lista: avatares + última actividad */
 .lc-foot{display:flex; align-items:center; gap:8px; margin-top:7px; min-width:0}
 .lc-foot .avs{display:flex}
@@ -626,7 +617,7 @@ function loginView(){
 }
 
 /* ---------------- Barra de navegación (opcional) ---------------- */
-const navEnabled = () => localStorage.getItem('fam-nav') === 'on';
+const navEnabled = () => true; // la navegación es parte permanente de la app
 
 function renderNav(){
   const existing = document.getElementById('bottomNav');
@@ -793,7 +784,6 @@ async function homeView(){
       <button class="avatar" id="btnProfile" title="Mi perfil">${avatar ? `<img src="${esc(avatar)}" alt="">` : esc(myName.charAt(0).toUpperCase())}</button>
     </div>
     <div class="greet">${greet}, ${esc(myName)} 👋<small>¿Qué necesita la familia hoy?</small></div>
-    <div class="searchbar">🔎<input id="homeSearch" type="search" placeholder="Buscar lista o tarea…" autocomplete="off"></div>
 
     <div class="stats stats2">
       <button class="stat st-a" data-see="pending"><div class="n">${pendTotal}</div><div class="l">Pendientes ›</div></button>
@@ -932,16 +922,6 @@ async function homeView(){
   document.getElementById('btnJoin').onclick = () => location.hash = '#/join';
   document.getElementById('btnProfile').onclick = () => location.hash = '#/profile';
   document.querySelectorAll('[data-see]').forEach(b => b.onclick = () => location.hash = '#/see/' + b.dataset.see);
-  document.getElementById('homeSearch').oninput = (e) => {
-    const q = e.target.value.trim().toLowerCase();
-    document.querySelectorAll('#lists .list-card').forEach(c => {
-      const name = c.querySelector('.name')?.textContent.toLowerCase() || '';
-      c.style.display = !q || name.includes(q) ? '' : 'none';
-    });
-    document.querySelectorAll('.tp-row').forEach(rw => {
-      rw.style.display = !q || rw.textContent.toLowerCase().includes(q) ? '' : 'none';
-    });
-  };
 
   let homeTimer = null;
   const refreshHome = () => {
@@ -970,7 +950,7 @@ async function profileView(){
       <div class="avatar">${avatar ? `<img src="${esc(avatar)}" alt="">` : '👤'}</div>
       <div><b>${esc(myRow?.first_name || '')}</b><div class="em">${esc(me.email)}</div></div>
     </div>
-    <div class="field"><label>Mi nombre (visible para la familia)</label>
+    <div class="field"><label>Mi nombre (visible para la familia · se guarda solo)</label>
       <input id="pName" value="${esc(myRow?.first_name || '')}" maxlength="30" autocomplete="off">
     </div>
     <div class="field"><label>Tema</label>
@@ -979,34 +959,20 @@ async function profileView(){
           `<button class="theme-opt ${k===cur?'sel':''}" data-th="${k}"><span class="sw" style="background:${t.sw}"></span>${t.label}</button>`).join('')}
       </div>
     </div>
-    <div class="field"><label>Barra de navegación inferior</label>
-      <div class="type-grid" style="grid-template-columns:1fr 1fr">
-        <button class="type-opt ${navEnabled()?'sel':''}" data-nav="on"><span class="e">📱</span>Mostrar</button>
-        <button class="type-opt ${!navEnabled()?'sel':''}" data-nav="off"><span class="e">🚫</span>Ocultar</button>
-      </div>
-    </div>
-    <button class="btn-primary" id="pSave">Guardar</button>
     <button class="btn-danger-ghost" id="pLogout">Cerrar sesión</button>`;
   wireBack();
   document.querySelectorAll('.theme-opt').forEach(b => b.onclick = () => {
     applyTheme(b.dataset.th);
     document.querySelectorAll('.theme-opt').forEach(x => x.classList.toggle('sel', x===b));
   });
-  document.querySelectorAll('[data-nav]').forEach(b => b.onclick = () => {
-    localStorage.setItem('fam-nav', b.dataset.nav);
-    document.querySelectorAll('[data-nav]').forEach(x => x.classList.toggle('sel', x===b));
-    renderNav();
+  document.getElementById('pName').addEventListener('change', async (e) => {
+    const name = e.target.value.trim();
+    if (!name || name === (myRow?.first_name || '')) return;
+    const { error } = await sb.from('sys_user').update({ first_name: name }).eq('id', me.id);
+    if (error) return toast('Error: ' + error.message);
+    if (myRow) myRow.first_name = name;
+    toast('Nombre guardado ✓');
   });
-  document.getElementById('pSave').onclick = async (e) => {
-    const name = document.getElementById('pName').value.trim();
-    e.target.disabled = true;
-    if (name && name !== (myRow?.first_name || '')){
-      const { error } = await sb.from('sys_user').update({ first_name: name }).eq('id', me.id);
-      if (error){ e.target.disabled = false; return toast('Error: ' + error.message); }
-    }
-    toast('Perfil guardado ✓');
-    location.hash = '';
-  };
   document.getElementById('pLogout').onclick = async () => {
     const ok = await confirmSheet({ title:'Cerrar sesión', message:'Tendrás que volver a entrar con Google la próxima vez.', confirmLabel:'Sí, cerrar sesión', danger:true });
     if (ok) sb.auth.signOut();
