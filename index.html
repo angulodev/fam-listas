@@ -452,6 +452,7 @@ body.has-nav .toast{bottom:calc(168px + env(safe-area-inset-bottom))}
 [data-theme="oscuro"] .stat.st-c .n{color:#B79AFF}
 [data-theme="oscuro"] .stat.st-d .n{color:#F2CB4E}
 .stat .l{color:var(--muted)}
+.stat .n .sp{font-size:.78rem; font-weight:800; font-family:'Nunito'}
 
 /* Botones más presentes */
 .btn-primary{padding:16px; font-size:1.02rem}
@@ -717,7 +718,7 @@ async function homeView(){
   /* --- estadísticas --- */
   const all = items || [];
   const now = new Date();
-  const dayKey = d => d.toISOString().slice(0,10);
+  const dayKey = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   const last7 = [...Array(7)].map((_,i) => { const d = new Date(now); d.setDate(now.getDate()-(6-i)); return d; });
   const doneByDay = Object.fromEntries(last7.map(d => [dayKey(d), 0]));
   let done7 = 0, spend7 = 0, spendMonth = 0;
@@ -728,7 +729,7 @@ async function homeView(){
     if (i.is_done){
       perList[i.list_id].done++;
       if (i.done_at){
-        const k = i.done_at.slice(0,10);
+        const k = dayKey(new Date(i.done_at));
         if (k in doneByDay){ doneByDay[k]++; done7++; if (i.price) spend7 += Number(i.price); }
         const dd = new Date(i.done_at);
         if (dd.getMonth() === now.getMonth() && dd.getFullYear() === now.getFullYear() && i.price)
@@ -787,9 +788,7 @@ async function homeView(){
 
     <div class="stats stats2">
       <button class="stat st-a" data-see="pending"><div class="n">${pendTotal}</div><div class="l">Pendientes ›</div></button>
-      <button class="stat st-b" data-see="today"><div class="n">${doneToday}</div><div class="l">Listos hoy ›</div></button>
-      <button class="stat st-c" data-see="week"><div class="n">${done7}</div><div class="l">Semana${spend7 ? ` · ${clp(spend7)}` : ''} ›</div></button>
-      <button class="stat st-d" data-see="month"><div class="n">${spendMonth ? clp(spendMonth) : '—'}</div><div class="l">Gasto del mes ›</div></button>
+      <button class="stat st-c" data-see="week"><div class="n">${done7}${spend7 ? `<small class="sp"> · ${clp(spend7)}</small>` : ''}</div><div class="l">Esta semana ›</div></button>
     </div>
 
     ${myTasks.length ? `
@@ -1009,13 +1008,24 @@ async function seeView(kind){
   const rows = (items||[]).filter(match)
     .sort((a,b) => ((b.done_at||b.created_at||'')).localeCompare(a.done_at||a.created_at||''));
   const total = rows.reduce((s,i) => s + (Number(i.price)||0), 0);
+  let monthTotal = 0;
+  if (kind === 'week'){
+    (items||[]).forEach(i => {
+      if (i.is_done && i.done_at && i.price){
+        const d = new Date(i.done_at);
+        if (d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear())
+          monthTotal += Number(i.price);
+      }
+    });
+  }
   const byList = {};
   rows.forEach(i => (byList[i.list_id] = byList[i.list_id] || []).push(i));
 
   $app.innerHTML = pageHead(TITLES[kind]) + `
     <div class="chip-row">
       <span class="chip">${rows.length} ítem${rows.length!==1?'s':''}</span>
-      ${total ? `<span class="chip orange">💰 ${clp(total)}</span>` : ''}
+      ${total ? `<span class="chip orange">💰 Semana: ${clp(total)}</span>` : ''}
+      ${monthTotal ? `<span class="chip">📅 Mes: ${clp(monthTotal)}</span>` : ''}
     </div>
     ${!rows.length ? `<div class="empty"><div class="big">${kind==='pending'?'🎉':'🌙'}</div>${kind==='pending'?'Nada pendiente. ¡Todo al día!':'Sin movimientos en este período.'}</div>`
       : Object.entries(byList).map(([lid, its]) => {
